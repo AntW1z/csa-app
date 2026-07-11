@@ -38,5 +38,12 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isModerator();
     }
+
+    // Home screen's auto-advancing image carousel — public to read, same
+    // as posts, only moderators/admins curate it.
+    match /carouselItems/{itemId} {
+      allow read: if true;
+      allow write: if isModerator();
+    }
   }
 }

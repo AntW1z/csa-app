@@ -4,6 +4,7 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } f
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
+import { colors, radius, spacing } from '../../src/theme';
 
 export default function ProfileScreen() {
   const { firebaseUser, profile, loading } = useAuth();
@@ -58,7 +59,9 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>{profile?.displayName ?? firebaseUser.email}</Text>
-      <Text style={styles.role}>Status: {profile?.role ?? 'user'}</Text>
+      <View style={styles.roleBadge}>
+        <Text style={styles.roleBadgeText}>{profile?.role ?? 'user'}</Text>
+      </View>
       {profile?.role === 'user' && profile.memberRequestStatus !== 'pending' && (
         <Pressable style={styles.button} onPress={requestMembership}>
           <Text style={styles.buttonText}>Request member status</Text>
@@ -75,15 +78,16 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', padding: 20, gap: 12, justifyContent: 'center' },
-  header: { fontSize: 20, fontWeight: '600' },
-  role: { fontSize: 14, color: '#666' },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12 },
-  button: { backgroundColor: '#A32D2D', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 8 },
-  buttonText: { color: '#fff', fontWeight: '600' },
-  switchText: { color: '#A32D2D', textAlign: 'center', marginTop: 8 },
-  error: { color: '#A32D2D', fontSize: 13 },
-  pending: { color: '#854F0B', fontSize: 13 },
-  signOut: { marginTop: 24, alignItems: 'center' },
-  signOutText: { color: '#888' },
+  container: { flex: 1, backgroundColor: colors.background, padding: spacing.xl, gap: spacing.md, justifyContent: 'center' },
+  header: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
+  roleBadge: { alignSelf: 'flex-start', backgroundColor: colors.neutralSoft, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 4 },
+  roleBadgeText: { fontSize: 12, fontWeight: '700', color: colors.neutralSoftText, textTransform: 'uppercase', letterSpacing: 0.3 },
+  input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, padding: spacing.md, fontSize: 15 },
+  button: { backgroundColor: colors.red, borderRadius: radius.md, padding: 14, alignItems: 'center', marginTop: spacing.sm },
+  buttonText: { color: colors.onAccent, fontWeight: '700' },
+  switchText: { color: colors.red, textAlign: 'center', marginTop: spacing.sm },
+  error: { color: colors.red, fontSize: 13 },
+  pending: { color: colors.amberSoftText, fontSize: 13 },
+  signOut: { marginTop: spacing.xl, alignItems: 'center' },
+  signOutText: { color: colors.textMuted },
 });

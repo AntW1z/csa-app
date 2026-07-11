@@ -34,3 +34,12 @@ export interface PopupConfig {
   ctaText?: string;
   ctaLink?: string;
 }
+
+// Shown as an auto-advancing image strip at the top of Home. `link` can be
+// an in-app path (e.g. "/calendar") or an external URL.
+export interface CarouselItem {
+  id: string;
+  imageUrl: string;
+  link?: string;
+  createdAt: any;
+}
