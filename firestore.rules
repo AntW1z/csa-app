@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function role() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isModerator() {
+      return request.auth != null && (role() == 'moderator' || role() == 'admin');
+    }
+
+    function isAdmin() {
+      return request.auth != null && role() == 'admin';
+    }
+
+    // Anyone signed in can read profiles (needed to show pending requests
+    // to moderators). Users can create their own doc on first sign-in and
+    // edit their own fields, but cannot change their own role — only a
+    // moderator/admin write can do that.
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow update: if request.auth != null && (
+        (request.auth.uid == uid && request.resource.data.role == resource.data.role) ||
+        isModerator()
+      );
+    }
+
+    // Posts and the popup config are public to read (no login needed to
+    // browse), but only moderators/admins can write.
+    match /posts/{postId} {
+      allow read: if true;
+      allow write: if isModerator();
+    }
+
+    match /config/popup {
+      allow read: if true;
+      allow write: if isModerator();
+    }
+  }
+}
