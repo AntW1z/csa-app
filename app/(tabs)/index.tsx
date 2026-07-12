@@ -5,12 +5,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
-import PostCard from '../../src/components/PostCard';
+import PostGrid from '../../src/components/PostGrid';
 import PromoPopup from '../../src/components/PromoPopup';
 import PromoCarousel from '../../src/components/PromoCarousel';
 import InfoModal from '../../src/components/InfoModal';
 import { Post, PopupConfig, CarouselItem } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
+import { getEventWindow } from '../../src/utils';
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isUpcomingThisWeek(post: Post, now: Date) {
+  const window = getEventWindow(post);
+  if (!window) return false;
+  return window.end >= now && window.start <= new Date(now.getTime() + WEEK_MS);
+}
 
 const WHAT_IS_CSA = `CSA (Chinese Student Association) is a student-run club bringing together anyone interested in Chinese culture and community. We host general body meetings, cultural events, socials, and collaborations with other orgs throughout the year.
 
@@ -31,7 +40,11 @@ export default function Home() {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
-      setPosts(all.filter((p) => p.visibility === 'everyone' || isMemberOrAbove));
+      const now = new Date();
+      const upcoming = all
+        .filter((p) => (p.visibility === 'everyone' || isMemberOrAbove) && isUpcomingThisWeek(p, now))
+        .sort((a, b) => new Date(a.dateTime ?? 0).getTime() - new Date(b.dateTime ?? 0).getTime());
+      setPosts(upcoming);
     });
     return unsub;
   }, [isMemberOrAbove]);
@@ -69,10 +82,9 @@ export default function Home() {
               <Text style={styles.quickActionText}>What is CSA?</Text>
             </Pressable>
           </View>
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
-          {posts.length === 0 && <Text style={styles.empty}>No posts yet.</Text>}
+          <Text style={styles.sectionLabel}>This week</Text>
+          <PostGrid posts={posts} />
+          {posts.length === 0 && <Text style={styles.empty}>Nothing happening this week.</Text>}
         </View>
       </ScrollView>
       {popup && showPopup && <PromoPopup popup={popup} onClose={() => setShowPopup(false)} />}
@@ -85,6 +97,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingBottom: spacing.lg },
   body: { padding: spacing.lg, gap: spacing.md },
+  sectionLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.3 },
   quickActions: { flexDirection: 'row', gap: spacing.md },
   quickAction: {
     flex: 1,

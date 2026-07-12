@@ -18,7 +18,14 @@ export interface Post {
   type: PostType;
   title: string;
   description: string;
+  // ISO 8601 strings from the moderator dashboard's date/time picker — chosen
+  // because ISO strings also sort correctly as plain strings, which is what
+  // lets Calendar's Firestore query do orderBy('dateTime') directly.
   dateTime?: string;
+  endDateTime?: string;
+  // True when only dates (not times) were picked — e.g. a multi-day promo
+  // running Aug 23-25 with no specific start/end time attached.
+  allDay?: boolean;
   locationText?: string;
   visibility: Visibility;
   imageUrl?: string;
