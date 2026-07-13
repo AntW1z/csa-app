@@ -1,21 +1,28 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query, setDoc, serverTimestamp, where } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { UserProfile } from '../types';
+import { PushMessage, UserProfile } from '../types';
 import { registerForPushNotificationsAsync } from '../notifications';
 
 interface AuthContextValue {
   firebaseUser: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  // Sent notifications this account is eligible to see (audience already
+  // filtered), and how many it hasn't opened yet — shared here so the
+  // header badge and the inbox screen read from one listener instead of two.
+  visibleNotifications: PushMessage[];
+  unreadCount: number;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   firebaseUser: null,
   profile: null,
   loading: true,
+  visibleNotifications: [],
+  unreadCount: 0,
 });
 
 // Browsing the app never requires an account. This context only starts
@@ -24,6 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sentNotifications, setSentNotifications] = useState<PushMessage[]>([]);
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
@@ -72,8 +80,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     registerForPushNotificationsAsync(firebaseUser.uid);
   }, [firebaseUser]);
 
+  // The in-app inbox — only meaningful once signed in, since read state
+  // lives on the user's own profile doc.
+  useEffect(() => {
+    if (!firebaseUser) {
+      setSentNotifications([]);
+      return;
+    }
+    const q = query(collection(db, 'notifications'), where('status', '==', 'sent'), orderBy('sentAt', 'desc'));
+    return onSnapshot(
+      q,
+      (snap) => setSentNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PushMessage))),
+      (err) => console.warn('notifications listener error', err)
+    );
+  }, [firebaseUser]);
+
+  const isMemberOrAbove = !!profile && profile.role !== 'user';
+  const visibleNotifications = sentNotifications.filter((n) => n.audience === 'everyone' || isMemberOrAbove);
+  const unreadCount = profile
+    ? visibleNotifications.filter((n) => !(profile.readNotificationIds ?? []).includes(n.id)).length
+    : 0;
+
   return (
-    <AuthContext.Provider value={{ firebaseUser, profile, loading }}>
+    <AuthContext.Provider value={{ firebaseUser, profile, loading, visibleNotifications, unreadCount }}>
       {children}
     </AuthContext.Provider>
   );

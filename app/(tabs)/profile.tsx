@@ -52,6 +52,10 @@ export default function ProfileScreen() {
               {mode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account'}
             </Text>
           </Pressable>
+          <Text style={styles.notifHint}>
+            Want to hear about CSA events the moment they're posted? Sign up for an account to get
+            real-time notifications from the club!
+          </Text>
         </View>
       </View>
     );
@@ -240,6 +244,7 @@ const styles = StyleSheet.create({
   button: { backgroundColor: colors.red, borderRadius: radius.md, padding: 14, alignItems: 'center' },
   buttonText: { color: colors.onAccent, fontWeight: '700' },
   switchText: { color: colors.red, textAlign: 'center', marginTop: spacing.sm },
+  notifHint: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: spacing.lg, lineHeight: 17 },
   error: { color: colors.red, fontSize: 13 },
   pending: { color: colors.amberSoftText, fontSize: 13, textAlign: 'center', marginTop: spacing.md },
   signOutWrap: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg },

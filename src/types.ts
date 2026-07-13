@@ -18,6 +18,12 @@ export interface UserProfile {
   // read these directly to send push notifications on publish (see
   // src/notifications.ts), no backend involved.
   pushToken?: string;
+  // IDs of PushMessage docs this user has opened in their in-app inbox —
+  // small enough not to worry about unbounded growth at club scale, and
+  // storing it here (rather than on the notification doc) means marking
+  // something read never needs new Firestore permissions beyond the
+  // self-write a user already has on their own profile.
+  readNotificationIds?: string[];
 }
 
 export type PostType = 'event' | 'announcement' | 'collab';

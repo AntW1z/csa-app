@@ -43,10 +43,13 @@ service cloud.firestore {
     }
 
     // Drafted/sent push notifications, managed from Manage > Notifications.
-    // Same trust level as posts/carouselItems — any moderator can draft,
-    // edit, or send one.
+    // Only moderators can draft, edit, or send one — but once a message is
+    // actually sent, any signed-in user can read it for their in-app inbox
+    // (app/(tabs)/notifications.tsx). Drafts stay moderator/admin-only.
+    // Audience ("everyone" vs "members") is filtered client-side, same
+    // accepted tradeoff as posts' members-only visibility — see README.
     match /notifications/{notifId} {
-      allow read: if isModerator();
+      allow read: if isModerator() || (request.auth != null && resource.data.status == 'sent');
       allow write: if isModerator();
     }
 

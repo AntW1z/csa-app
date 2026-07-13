@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
@@ -9,6 +9,22 @@ function ProfileHeaderButton() {
   return (
     <Pressable onPress={() => router.push('/profile')} hitSlop={8} style={styles.profileBtn}>
       <Ionicons name="person-circle-outline" size={28} color={colors.textPrimary} />
+    </Pressable>
+  );
+}
+
+function NotificationsHeaderButton() {
+  const router = useRouter();
+  const { firebaseUser, unreadCount } = useAuth();
+  if (!firebaseUser) return null;
+  return (
+    <Pressable onPress={() => router.push('/notifications')} hitSlop={8} style={styles.notifBtn}>
+      <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
+      {unreadCount > 0 && (
+        <View style={styles.notifBadge}>
+          <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -29,6 +45,7 @@ export default function TabsLayout() {
         headerShadowVisible: false,
         headerStyle: { backgroundColor: colors.surface },
         headerLeft: () => <ProfileHeaderButton />,
+        headerRight: () => <NotificationsHeaderButton />,
       }}
     >
       <Tabs.Screen
@@ -59,6 +76,16 @@ export default function TabsLayout() {
           // Reachable via the header profile icon instead of a bottom tab.
           href: null,
           headerLeft: () => null,
+          headerRight: () => null,
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Notifications',
+          // Reachable via the header bell icon instead of a bottom tab.
+          href: null,
+          headerRight: () => null,
         }}
       />
       <Tabs.Screen
@@ -76,4 +103,18 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   profileBtn: { marginLeft: spacing.lg },
+  notifBtn: { marginRight: spacing.lg },
+  notifBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    backgroundColor: colors.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifBadgeText: { color: colors.onAccent, fontSize: 9, fontWeight: '800' },
 });
