@@ -24,6 +24,10 @@ export interface UserProfile {
   // something read never needs new Firestore permissions beyond the
   // self-write a user already has on their own profile.
   readNotificationIds?: string[];
+  // IDs of PushMessage docs this user has removed from their own inbox —
+  // per-user, like deleting an email from your own mailbox, not the
+  // underlying sent message (which moderators still see in Manage > Logs).
+  deletedNotificationIds?: string[];
 }
 
 export type PostType = 'event' | 'announcement' | 'collab';

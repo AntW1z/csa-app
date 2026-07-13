@@ -96,7 +96,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [firebaseUser]);
 
   const isMemberOrAbove = !!profile && profile.role !== 'user';
-  const visibleNotifications = sentNotifications.filter((n) => n.audience === 'everyone' || isMemberOrAbove);
+  const visibleNotifications = sentNotifications.filter(
+    (n) => (n.audience === 'everyone' || isMemberOrAbove) && !profile?.deletedNotificationIds?.includes(n.id)
+  );
   const unreadCount = profile
     ? visibleNotifications.filter((n) => !(profile.readNotificationIds ?? []).includes(n.id)).length
     : 0;
