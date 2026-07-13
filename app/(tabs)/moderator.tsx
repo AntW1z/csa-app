@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, FlatList, ScrollView, StyleSheet, Switch, Image } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, ScrollView, StyleSheet, Switch, Image, Alert } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -380,10 +380,18 @@ export default function ModeratorScreen() {
       .map((d) => d.data() as UserProfile)
       .filter((u) => u.pushToken && (sendingNotif.audience === 'everyone' || u.role !== 'user'))
       .map((u) => u.pushToken as string);
-    await sendPushToTokens(tokens, sendingNotif.title, sendingNotif.body);
+    const reached = await sendPushToTokens(tokens, sendingNotif.title, sendingNotif.body);
     await updateDoc(doc(db, 'notifications', sendingNotif.id), { status: 'sent', sentAt: serverTimestamp() });
-    logAction(`Sent notification "${sendingNotif.title}" to ${sendingNotif.audience === 'everyone' ? 'everyone' : 'members'}`);
+    logAction(`Sent notification "${sendingNotif.title}" to ${sendingNotif.audience === 'everyone' ? 'everyone' : 'members'} (${reached} device${reached === 1 ? '' : 's'})`);
     setSendingNotif(null);
+    if (!reached) {
+      Alert.alert(
+        'Sent to 0 devices',
+        'No one has push notifications registered yet. This usually means the app isn’t linked to an EAS project (run `eas login` and `eas init`), or no one has granted notification permission on a build that supports it.'
+      );
+    } else {
+      Alert.alert('Sent', `Delivered to ${reached} device${reached === 1 ? '' : 's'}.`);
+    }
   };
 
   const canPublish = !!(title.trim() && description.trim() && eventRange.start && eventRange.end);

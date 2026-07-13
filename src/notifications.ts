@@ -50,10 +50,12 @@ export async function registerForPushNotificationsAsync(uid: string) {
 
 // Sent directly from the publishing moderator's device via Expo's push
 // service — no Cloud Functions or backend required. Expo's API caps each
-// request at 100 messages, so token lists beyond that are chunked.
+// request at 100 messages, so token lists beyond that are chunked. Returns
+// how many devices it actually attempted to reach, since "sent" in the UI
+// otherwise looks identical whether it reached 50 people or zero.
 export async function sendPushToTokens(tokens: string[], title: string, body: string, data?: Record<string, unknown>) {
   const uniqueTokens = Array.from(new Set(tokens)).filter((t) => t?.startsWith('ExponentPushToken'));
-  if (uniqueTokens.length === 0) return;
+  if (uniqueTokens.length === 0) return 0;
 
   const chunks: string[][] = [];
   for (let i = 0; i < uniqueTokens.length; i += 100) chunks.push(uniqueTokens.slice(i, i + 100));
@@ -67,4 +69,6 @@ export async function sendPushToTokens(tokens: string[], title: string, body: st
       }).catch((err) => console.warn('Push send failed:', err))
     )
   );
+
+  return uniqueTokens.length;
 }
