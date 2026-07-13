@@ -61,13 +61,25 @@ export async function sendPushToTokens(tokens: string[], title: string, body: st
   for (let i = 0; i < uniqueTokens.length; i += 100) chunks.push(uniqueTokens.slice(i, i + 100));
 
   await Promise.all(
-    chunks.map((chunk) =>
-      fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk.map((to) => ({ to, title, body, data }))),
-      }).catch((err) => console.warn('Push send failed:', err))
-    )
+    chunks.map(async (chunk) => {
+      try {
+        const res = await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify(chunk.map((to) => ({ to, title, body, data }))),
+        });
+        const json = await res.json();
+        // Expo's push API accepts the request even when an individual
+        // ticket fails (e.g. DeviceNotRegistered, invalid credentials) —
+        // "sent" alone doesn't mean "delivered", so log the actual tickets.
+        console.log('Expo push response:', JSON.stringify(json));
+        const errors = (json.data ?? []).filter((ticket: { status: string }) => ticket.status === 'error');
+        if (errors.length > 0) console.warn('Push send had per-ticket errors:', JSON.stringify(errors));
+        if (json.errors) console.warn('Push send request-level errors:', JSON.stringify(json.errors));
+      } catch (err) {
+        console.warn('Push send failed:', err);
+      }
+    })
   );
 
   return uniqueTokens.length;
