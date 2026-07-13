@@ -39,25 +39,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!firebaseUser) return;
     const ref = doc(db, 'users', firebaseUser.uid);
-    const unsubDoc = onSnapshot(ref, async (snap) => {
-      if (snap.exists()) {
-        setProfile(snap.data() as UserProfile);
-      } else {
-        // First sign-in: create their profile doc, defaulting to the
-        // lowest-privilege role. Moderators/admins are promoted manually.
-        const newProfile: UserProfile = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email ?? '',
-          displayName: firebaseUser.email?.split('@')[0] ?? 'Member',
-          role: 'user',
-          memberRequestStatus: 'none',
-          createdAt: serverTimestamp(),
-        };
-        await setDoc(ref, newProfile);
-        setProfile(newProfile);
-      }
-      setLoading(false);
-    });
+    const unsubDoc = onSnapshot(
+      ref,
+      async (snap) => {
+        if (snap.exists()) {
+          setProfile(snap.data() as UserProfile);
+        } else {
+          // First sign-in: create their profile doc, defaulting to the
+          // lowest-privilege role. Moderators/admins are promoted manually.
+          const newProfile: UserProfile = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email ?? '',
+            displayName: firebaseUser.email?.split('@')[0] ?? 'Member',
+            role: 'user',
+            memberRequestStatus: 'none',
+            createdAt: serverTimestamp(),
+          };
+          await setDoc(ref, newProfile);
+          setProfile(newProfile);
+        }
+        setLoading(false);
+      },
+      (err) => console.warn('profile listener error', err)
+    );
     return unsubDoc;
   }, [firebaseUser]);
 

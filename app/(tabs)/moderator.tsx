@@ -246,14 +246,28 @@ export default function ModeratorScreen() {
   const [sendingNotif, setSendingNotif] = useState<PushMessage | null>(null);
 
   useEffect(() => {
+    // Keyed on uid (not just mounted once) so a sign-out/sign-in cycle
+    // tears down and recreates this — a live listener that hits a
+    // permission-denied (e.g. from signing out while still mounted here)
+    // dies permanently otherwise and never recovers on its own.
+    if (!profile) return;
     const q = query(collection(db, 'users'), where('memberRequestStatus', '==', 'pending'));
-    return onSnapshot(q, (snap) => setPending(snap.docs.map((d) => d.data() as UserProfile)));
-  }, []);
+    return onSnapshot(
+      q,
+      (snap) => setPending(snap.docs.map((d) => d.data() as UserProfile)),
+      (err) => console.warn('pending listener error', err)
+    );
+  }, [profile?.uid]);
 
   useEffect(() => {
+    if (!profile) return;
     const q = query(collection(db, 'users'), where('role', 'in', ['member', 'moderator', 'admin']));
-    return onSnapshot(q, (snap) => setMembers(snap.docs.map((d) => d.data() as UserProfile)));
-  }, []);
+    return onSnapshot(
+      q,
+      (snap) => setMembers(snap.docs.map((d) => d.data() as UserProfile)),
+      (err) => console.warn('members listener error', err)
+    );
+  }, [profile?.uid]);
 
   useEffect(() => {
     return onSnapshot(collection(db, 'posts'), (snap) =>
@@ -267,16 +281,25 @@ export default function ModeratorScreen() {
   }, []);
 
   useEffect(() => {
+    if (!profile) return;
     const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snap) => setPushMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PushMessage))));
-  }, []);
+    return onSnapshot(
+      q,
+      (snap) => setPushMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PushMessage))),
+      (err) => console.warn('notifications listener error', err)
+    );
+  }, [profile?.uid]);
 
   useEffect(() => {
     // Only admins can read the log (see firestore.rules) — moderators can
     // still create entries via logAction below, they just can't browse it.
     if (profile?.role !== 'admin') return;
     const q = query(collection(db, 'logs'), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snap) => setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as LogEntry))));
+    return onSnapshot(
+      q,
+      (snap) => setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as LogEntry))),
+      (err) => console.warn('logs listener error', err)
+    );
   }, [profile?.role]);
 
   // Fire-and-forget audit trail — every moderation action writes one of
