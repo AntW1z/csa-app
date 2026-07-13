@@ -2,9 +2,10 @@
 
 A four-role (user / member / moderator / admin) events + announcements app
 for Georgia Tech CSA, built with Expo Router and Firebase. Everything here
-runs on Firebase's free Spark tier — no credit card needed for anything
-currently implemented. (Real image *upload* would change that — see
-Known limitations.)
+runs on Firebase's free Spark tier and Expo's free tier — no credit card
+needed for anything currently implemented. See
+[Costs to expect before production](#costs-to-expect-before-production) for
+what changes that.
 
 ## What's in here
 
@@ -22,25 +23,30 @@ app/
     profile.tsx                    Sign in / create account / status — the
                                      ONLY login screen, reachable via the
                                      header icon, not a bottom tab
-    moderator.tsx                   Approve requests, create/edit/delete
-                                      posts, manage the home carousel,
-                                      year-end reset
+    moderator.tsx                   Manage dashboard: pending requests,
+                                      member management, posts, home
+                                      carousel, notifications, audit log
 src/
   firebase.ts                 Firebase init (reads from .env)
+  notifications.ts             Push token registration + sending via
+                                 Expo's push API (no backend)
   theme.ts                    Shared design tokens (colors, spacing,
                                 radius) — every screen pulls from here
   types.ts                    Shared TypeScript types
   utils.ts                    Event date/time formatting + all-day/
                                 multi-day window math
-  context/AuthContext.tsx     Tracks signed-in user + their Firestore role
+  context/AuthContext.tsx     Tracks signed-in user + their Firestore role,
+                                registers this device for push notifications
   components/
-    PostCard.tsx               Compact feed/calendar card — tap for a
-                                 popup with the full image + description
+    PostCard.tsx               Compact feed/calendar card
+    PostDetailModal.tsx         Full-screen post detail popup, shared by
+                                  PostCard and Home's carousel/featured-post
     PostGrid.tsx                Responsive 1/2/3-column layout (phones get
                                  one column, wider viewports get more)
     PromoCarousel.tsx           Auto-advancing image strip at the top of
                                  Home, moderator-curated
-    PromoPopup.tsx              Launch popup with a "Skip Ns" countdown
+    PromoPopup.tsx              Launch popup (full-screen featured post)
+                                  with a "Skip Ns" countdown
     InfoModal.tsx                Generic popup (used for "What is CSA?")
 firestore.rules              Security rules — enforces role boundaries
                                server-side
@@ -92,11 +98,12 @@ it only happens when officers change.
 
 ## Features
 
-**Home** — an auto-advancing image carousel (moderator-managed, tap an
-image to jump to a link or in-app page), two quick-action buttons
-(Calendar, "What is CSA?"), and a feed of this week's events only,
-soonest first. A launch popup can be configured to show once per app
-session, with a "Skip Ns" countdown that's tappable at any time.
+**Home** — an auto-advancing image carousel (moderator-managed; an item is
+either a plain image or linked to a post, in which case tapping it opens
+that post's full detail), two quick-action buttons (Calendar, "What is
+CSA?"), and a feed of this week's events only, soonest first. Moderators
+can star one post as "featured," which shows it full-screen once per app
+session on launch, with a "Skip Ns" countdown that's tappable at any time.
 
 **Calendar** — a real month grid instead of a flat list. Days with events
 get a dot; tap a day to see that day's events below. Search by title to
@@ -111,12 +118,35 @@ jump straight to an event's month/day.
   30-min steps); on a single-day event, end-time slots before the chosen
   start time are disabled so you can't create a backwards range.
 - Existing posts can be edited (not just deleted and recreated) via the
-  "edit" link on each row in Manage → All posts.
+  "edit" link on each row in Manage → Posts, and starred to feature it as
+  the launch popup (see Home above).
 - An optional image URL renders at the top of the card; tapping a card
   opens a popup with the full (uncropped) image and description.
 
-**Home carousel** — moderators add/remove images (with an optional tap
-destination, internal path or external URL) from Manage → Home carousel.
+**Home carousel** — moderators add/remove images (either a plain decorative
+image, or one linked to an existing post so tapping it opens that event's
+full detail) from Manage → Home carousel.
+
+**Members** — Manage → Members lists everyone (moderators/admins, then
+members with their term), with year/semester/moderator/admin counts at the
+top. Tapping a row (admin-only) opens per-member actions: change membership
+term, promote/demote between member ↔ moderator ↔ admin, or remove
+membership entirely (two-step confirm, can't be undone). Admins can also
+clear all Year or all Semester memberships at once from here.
+
+**Notifications** — Manage → Notifications. Moderators draft a push message
+(title, body, and an Everyone/Members-only audience), which sits as a draft
+until someone chooses to send it. Sending requires a second confirmation
+("Send '{title}' to {audience}? This cannot be undone.") and is sent
+directly from the sending moderator's device via Expo's push API — no
+backend or paid Firebase plan required. Sent messages move to a Sent
+history list for reference. See Costs below for what a *scheduled* /
+exact-time version of this would need.
+
+**Logs** — Manage → Logs (admin-only). Every moderation action (approvals,
+role changes, post edits, notifications sent, etc.) is recorded with who
+did it and when. Moderators' actions are logged but only admins can view or
+clear the log.
 
 ## Known limitations (intentional, for v1)
 
@@ -130,35 +160,45 @@ destination, internal path or external URL) from Manage → Home carousel.
   an authenticated, role-checked request — worth revisiting before you
   post anything truly private.
 - **No real image upload yet.** Posts and carousel items take a pasted
-  image URL (e.g. from imgbb.com), not a photo-library picker. Real
-  in-app upload needs a hosting backend — Firebase Storage is the natural
-  fit, but as of when this was built, enabling Storage typically requires
-  upgrading to the pay-as-you-go Blaze plan (a credit card on file), even
-  though real usage cost should stay ~$0 at club scale. Worth deciding
-  deliberately rather than by surprise, which is why it's deferred for now.
-- **Auth doesn't persist across app restarts on native (iOS/Android).**
-  `src/firebase.ts` tries to use `getReactNativePersistence` from
-  `firebase/auth`, which isn't actually exported by the installed
-  `firebase` version — it silently falls back to `getAuth(app)`, so
-  sign-in still works, but members have to sign in again after fully
-  quitting the app. Fixing this means finding the right persistence
-  import for the current `firebase` package version (it moved around
-  across major versions).
-- No push notifications wired up yet — `expo-notifications` is the free,
-  no-backend-needed path when you're ready to add them. The event data
-  model already has structured start/end times and an `allDay` flag
-  (not just a freeform date string), which is exactly what scheduling a
-  reminder notification would need.
-- Moderator/admin assignment is manual via the Firebase console, by
-  design. The Firestore rules already permit any moderator/admin to set
-  any role on any user, though — there's no in-app promote button, purely
-  a missing UI, not a missing permission.
+  image URL (e.g. from imgbb.com), not a photo-library picker. See Costs
+  below — this is a deliberate deferral, not an oversight.
+- **Notifications are send-on-demand only, not scheduled.** A moderator
+  has to actually tap Send; there's no "fire automatically 1 hour before
+  the event" option yet. See Costs below for why.
+
+## Costs to expect before production
+
+Everything currently built runs entirely on free tiers (Firebase Spark +
+Expo's free tier). These are the specific upgrades that would cost money,
+and exactly what each one buys you, so nothing gets turned on by surprise:
+
+- **Firebase Blaze plan** (pay-as-you-go, requires a credit card on file —
+  actual usage cost should stay close to $0 at club scale, but Firebase
+  requires Blaze to be enabled at all for these). Needed for:
+  - **Cloud Storage**, to let moderators upload a photo directly from
+    their library instead of pasting an image URL.
+  - **Cloud Functions on a schedule** (Cloud Scheduler), which is what a
+    true "send this reminder automatically N minutes before the event, or
+    fire a scheduled notification even if nobody has the app open" feature
+    needs. Notifications are currently designed to avoid this entirely —
+    every send is triggered manually from a moderator's own device — which
+    is why it's a deliberate limitation above rather than a bug.
+- **Apple Developer Program — $99/year.** Required to publish to the App
+  Store, and to create a standalone/production iOS build.
+- **Google Play Console — $25 one-time.** Required to publish to the
+  Play Store.
+- **EAS Build.** Expo's free tier includes a limited number of builds per
+  month, which is enough for occasional testing; publishing to app stores
+  or building frequently may need a paid EAS plan. Also worth knowing: as
+  of SDK 54, remote push notifications no longer work inside Expo Go on
+  Android (iOS Expo Go still supports them) — testing the Notifications
+  feature on Android, and shipping the app at all, requires at least one
+  EAS **development build**, separate from app-store publishing builds.
 
 ## Next steps
 
-- Push notifications for upcoming events (`expo-notifications`)
 - Real image upload (Firebase Storage, once the Blaze-plan tradeoff above
   is a deliberate decision rather than a surprise)
-- Fix the auth-persistence fallback in `src/firebase.ts`
-- In-app promote-to-moderator/admin control (admin-only)
-- Confirm dialog on the year-end reset button before this goes live
+- Scheduled/exact-time notifications (Cloud Functions + Blaze — see Costs)
+- Members-only visibility enforced server-side, not just client-side (see
+  Known limitations)
