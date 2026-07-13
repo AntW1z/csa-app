@@ -1,0 +1,70 @@
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from './firebase';
+
+// Foreground behavior — without this, a notification that arrives while the
+// app is open won't show a banner at all.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+// Requests permission and saves this device's Expo push token onto the
+// signed-in user's profile doc. Moderators' clients read these tokens
+// directly (see sendPushToTokens) — there's no backend, so a new post's
+// notification is sent from whichever device published it.
+export async function registerForPushNotificationsAsync(uid: string) {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+  }
+
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== 'granted') return;
+
+  try {
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    const { data: token } = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+    await updateDoc(doc(db, 'users', uid), { pushToken: token });
+  } catch (err) {
+    // Most commonly: no EAS project linked yet (run `eas init`) — not
+    // fatal, the rest of the app works fine without push notifications.
+    console.warn('Push notification registration failed:', err);
+  }
+}
+
+// Sent directly from the publishing moderator's device via Expo's push
+// service — no Cloud Functions or backend required. Expo's API caps each
+// request at 100 messages, so token lists beyond that are chunked.
+export async function sendPushToTokens(tokens: string[], title: string, body: string, data?: Record<string, unknown>) {
+  const uniqueTokens = Array.from(new Set(tokens)).filter((t) => t?.startsWith('ExponentPushToken'));
+  if (uniqueTokens.length === 0) return;
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < uniqueTokens.length; i += 100) chunks.push(uniqueTokens.slice(i, i + 100));
+
+  await Promise.all(
+    chunks.map((chunk) =>
+      fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(chunk.map((to) => ({ to, title, body, data }))),
+      }).catch((err) => console.warn('Push send failed:', err))
+    )
+  );
+}

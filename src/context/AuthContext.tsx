@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { UserProfile } from '../types';
+import { registerForPushNotificationsAsync } from '../notifications';
 
 interface AuthContextValue {
   firebaseUser: User | null;
@@ -57,6 +59,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
     return unsubDoc;
+  }, [firebaseUser]);
+
+  // Registers this device's Expo push token once someone's signed in — web
+  // has no meaningful equivalent here, so it's skipped there.
+  useEffect(() => {
+    if (!firebaseUser || Platform.OS === 'web') return;
+    registerForPushNotificationsAsync(firebaseUser.uid);
   }, [firebaseUser]);
 
   return (

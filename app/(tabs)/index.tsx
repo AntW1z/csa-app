@@ -1,15 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, where, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import PostGrid from '../../src/components/PostGrid';
 import PromoPopup from '../../src/components/PromoPopup';
 import PromoCarousel from '../../src/components/PromoCarousel';
+import PostDetailModal from '../../src/components/PostDetailModal';
 import InfoModal from '../../src/components/InfoModal';
-import { Post, PopupConfig, CarouselItem } from '../../src/types';
+import { Post, CarouselItem } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 import { getEventWindow } from '../../src/utils';
 
@@ -30,9 +31,12 @@ export default function Home() {
   const { profile } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [carousel, setCarousel] = useState<CarouselItem[]>([]);
-  const [popup, setPopup] = useState<PopupConfig | null>(null);
-  const [showPopup, setShowPopup] = useState(false);
+  const [featuredPost, setFeaturedPost] = useState<Post | null>(null);
+  const [showAd, setShowAd] = useState(false);
+  const [detailPost, setDetailPost] = useState<Post | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const adShownRef = useRef(false);
 
   const isMemberOrAbove = !!profile && profile.role !== 'user';
 
@@ -57,20 +61,35 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    (async () => {
-      const snap = await getDoc(doc(db, 'config', 'popup'));
-      if (snap.exists()) {
-        const data = snap.data() as PopupConfig;
-        setPopup(data);
-        setShowPopup(data.active);
+    const q = query(collection(db, 'posts'), where('featured', '==', true), limit(1));
+    return onSnapshot(q, (snap) => {
+      const post = snap.docs[0] ? ({ id: snap.docs[0].id, ...snap.docs[0].data() } as Post) : null;
+      setFeaturedPost(post);
+      // Only ever auto-show the ad once per session, even if the featured
+      // post changes later while the app stays open.
+      if (post && !adShownRef.current) {
+        adShownRef.current = true;
+        setShowAd(true);
       }
-    })();
+    });
   }, []);
+
+  // A carousel item linked to a post fetches it on demand (they're rarely
+  // tapped, so no need for a standing listener) and opens its detail; a
+  // plain manually-added image has no tap behavior at all.
+  const handleCarouselPress = async (item: CarouselItem) => {
+    if (!item.postId) return;
+    const snap = await getDoc(doc(db, 'posts', item.postId));
+    if (snap.exists()) {
+      setDetailPost({ id: snap.id, ...snap.data() } as Post);
+      setShowDetail(true);
+    }
+  };
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <PromoCarousel items={carousel} />
+        <PromoCarousel items={carousel} onPressItem={handleCarouselPress} />
         <View style={styles.body}>
           <View style={styles.quickActions}>
             <Pressable style={styles.quickAction} onPress={() => router.push('/calendar')}>
@@ -87,7 +106,16 @@ export default function Home() {
           {posts.length === 0 && <Text style={styles.empty}>Nothing happening this week.</Text>}
         </View>
       </ScrollView>
-      {popup && showPopup && <PromoPopup popup={popup} onClose={() => setShowPopup(false)} />}
+      {featuredPost && showAd && (
+        <PromoPopup
+          post={featuredPost}
+          onSkip={() => setShowAd(false)}
+          onPressImage={() => { setShowAd(false); setDetailPost(featuredPost); setShowDetail(true); }}
+        />
+      )}
+      {detailPost && (
+        <PostDetailModal post={detailPost} visible={showDetail} onClose={() => setShowDetail(false)} />
+      )}
       <InfoModal visible={showInfo} title="What is CSA?" body={WHAT_IS_CSA} onClose={() => setShowInfo(false)} />
     </View>
   );

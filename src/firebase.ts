@@ -1,8 +1,21 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence, getAuth, Auth } from 'firebase/auth';
+import { initializeAuth, getAuth, Auth, Persistence } from 'firebase/auth';
+// The top-level `firebase` package's `./auth` export map has no
+// react-native condition (it only resolves to the browser/default bundle,
+// which lacks this), so getReactNativePersistence has to come from the
+// underlying @firebase/auth package instead, which does define one at
+// runtime for React Native. Its type declarations don't include this
+// function though — TS's "types" condition wins over "react-native" by key
+// order in @firebase/auth's export map, so it always resolves to the
+// generic (non-RN) .d.ts — hence the manual augmentation below.
+import { getReactNativePersistence } from '@firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+
+declare module '@firebase/auth' {
+  export function getReactNativePersistence(storage: unknown): Persistence;
+}
 
 // Values come from a .env file at the project root (see .env.example).
 // Expo automatically exposes any variable prefixed EXPO_PUBLIC_ to the app.

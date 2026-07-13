@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Image, Pressable, FlatList, StyleSheet, Dimensions, Linking } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Image, Pressable, FlatList, StyleSheet, Dimensions } from 'react-native';
 import { CarouselItem } from '../types';
 import { colors, spacing } from '../theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const HEIGHT = 220;
+const HEIGHT = 320;
 const AUTO_ADVANCE_MS = 4000;
 
-export default function PromoCarousel({ items }: { items: CarouselItem[] }) {
-  const router = useRouter();
+// What happens on tap (open a post's detail, or nothing for a plain image)
+// is decided by the caller, since a post-linked item needs a Firestore
+// fetch that only Home has the context to do.
+export default function PromoCarousel({ items, onPressItem }: { items: CarouselItem[]; onPressItem: (item: CarouselItem) => void }) {
   const listRef = useRef<FlatList<CarouselItem>>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -27,12 +28,6 @@ export default function PromoCarousel({ items }: { items: CarouselItem[] }) {
 
   if (items.length === 0) return null;
 
-  const openItem = (item: CarouselItem) => {
-    if (!item.link) return;
-    if (item.link.startsWith('/')) router.push(item.link as any);
-    else Linking.openURL(item.link);
-  };
-
   return (
     <View style={styles.wrap}>
       <FlatList
@@ -45,8 +40,10 @@ export default function PromoCarousel({ items }: { items: CarouselItem[] }) {
         getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
         onMomentumScrollEnd={(e) => setActiveIndex(Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH))}
         renderItem={({ item }) => (
-          <Pressable onPress={() => openItem(item)} disabled={!item.link}>
-            <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="cover" />
+          <Pressable onPress={() => onPressItem(item)} disabled={!item.postId}>
+            {/* "contain" so a tall poster shows in full (letterboxed) instead
+                of "cover" cropping it to fill this short, wide strip. */}
+            <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="contain" />
           </Pressable>
         )}
       />

@@ -27,14 +27,10 @@ service cloud.firestore {
       );
     }
 
-    // Posts and the popup config are public to read (no login needed to
-    // browse), but only moderators/admins can write.
+    // Posts are public to read (no login needed to browse), but only
+    // moderators/admins can write. The `featured` flag on a post is what
+    // makes it the full-screen launch popup on Home — same rule covers it.
     match /posts/{postId} {
-      allow read: if true;
-      allow write: if isModerator();
-    }
-
-    match /config/popup {
       allow read: if true;
       allow write: if isModerator();
     }
@@ -44,6 +40,24 @@ service cloud.firestore {
     match /carouselItems/{itemId} {
       allow read: if true;
       allow write: if isModerator();
+    }
+
+    // Drafted/sent push notifications, managed from Manage > Notifications.
+    // Same trust level as posts/carouselItems — any moderator can draft,
+    // edit, or send one.
+    match /notifications/{notifId} {
+      allow read: if isModerator();
+      allow write: if isModerator();
+    }
+
+    // Moderation audit log. Moderators' actions still get logged (they can
+    // create entries), but only an admin can read or clear the log itself —
+    // moderators can't browse each other's history.
+    match /logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isModerator();
+      allow update: if false;
+      allow delete: if isAdmin();
     }
   }
 }
