@@ -88,6 +88,7 @@ export default function CalendarScreen() {
         <TextInput
           style={styles.searchInput}
           placeholder="Search events by title"
+          placeholderTextColor={colors.textMuted}
           value={search}
           onChangeText={setSearch}
         />

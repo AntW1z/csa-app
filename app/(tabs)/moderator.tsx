@@ -721,7 +721,7 @@ export default function ModeratorScreen() {
 
               {carouselMode === 'image' ? (
                 <>
-                  <TextInput style={styles.input} placeholder="Image URL" autoCapitalize="none" value={carouselImageUrl} onChangeText={setCarouselImageUrl} />
+                  <TextInput style={styles.input} placeholder="Image URL" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={carouselImageUrl} onChangeText={setCarouselImageUrl} />
                   <Pressable style={styles.button} onPress={addCarouselItem}>
                     <Text style={styles.buttonText}>Add to carousel</Text>
                   </Pressable>
@@ -757,15 +757,15 @@ export default function ModeratorScreen() {
             </Pressable>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.header}>{editingPost ? 'Edit post' : 'New post'}</Text>
-              <TextInput style={styles.input} placeholder="Title (required)" value={title} onChangeText={setTitle} />
-              <TextInput style={styles.input} placeholder="Description (required)" value={description} onChangeText={setDescription} multiline />
+              <TextInput style={styles.input} placeholder="Title (required)" placeholderTextColor={colors.textMuted} value={title} onChangeText={setTitle} />
+              <TextInput style={styles.input} placeholder="Description (required)" placeholderTextColor={colors.textMuted} value={description} onChangeText={setDescription} multiline />
               <EventTimeRangeField
                 key={editingPost?.id ?? `new-${newPostFormKey}`}
                 onChange={setEventRange}
                 initial={editingPost ? eventRange : undefined}
               />
-              <TextInput style={styles.input} placeholder="Location (optional)" value={locationText} onChangeText={setLocationText} />
-              <TextInput style={styles.input} placeholder="Image URL (optional)" autoCapitalize="none" value={imageUrl} onChangeText={setImageUrl} />
+              <TextInput style={styles.input} placeholder="Location (optional)" placeholderTextColor={colors.textMuted} value={locationText} onChangeText={setLocationText} />
+              <TextInput style={styles.input} placeholder="Image URL (optional)" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={imageUrl} onChangeText={setImageUrl} />
               <View style={styles.row}>
                 <Text style={styles.rowLabel}>Members only</Text>
                 <Switch
@@ -1086,8 +1086,8 @@ export default function ModeratorScreen() {
             </Pressable>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.header}>{editingNotif ? 'Edit draft' : 'New notification'}</Text>
-              <TextInput style={styles.input} placeholder="Title (required)" value={notifTitle} onChangeText={setNotifTitle} />
-              <TextInput style={styles.input} placeholder="Message (required)" value={notifBody} onChangeText={setNotifBody} multiline />
+              <TextInput style={styles.input} placeholder="Title (required)" placeholderTextColor={colors.textMuted} value={notifTitle} onChangeText={setNotifTitle} />
+              <TextInput style={styles.input} placeholder="Message (required)" placeholderTextColor={colors.textMuted} value={notifBody} onChangeText={setNotifBody} multiline />
               <View style={styles.modeToggle}>
                 <Pressable
                   style={[styles.modeBtn, notifAudience === 'everyone' && styles.modeBtnActive]}
@@ -1226,7 +1226,7 @@ const styles = StyleSheet.create({
   approveText: { color: colors.successText, fontSize: 12, fontWeight: '700' },
   denyBtn: { backgroundColor: colors.danger, borderRadius: radius.sm, paddingVertical: 6, paddingHorizontal: spacing.md },
   denyText: { color: colors.dangerText, fontSize: 12, fontWeight: '700' },
-  input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, fontSize: 14, justifyContent: 'center' },
+  input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, fontSize: 14, color: colors.textPrimary, justifyContent: 'center' },
   datePlaceholder: { color: colors.textMuted, fontSize: 14 },
   dateValue: { color: colors.textPrimary, fontSize: 14 },
   clearText: { color: colors.red, fontSize: 12, fontWeight: '600', marginTop: -spacing.xs, marginBottom: spacing.sm },

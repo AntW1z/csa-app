@@ -41,8 +41,8 @@ export default function ProfileScreen() {
       <View style={styles.container}>
         <View style={styles.form}>
           <Text style={styles.header}>{mode === 'signup' ? 'Create account' : 'Sign in'}</Text>
-          <TextInput style={styles.input} placeholder="Email" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
-          <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
+          <TextInput style={styles.input} placeholder="Email" placeholderTextColor={colors.textMuted} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
+          <TextInput style={styles.input} placeholder="Password" placeholderTextColor={colors.textMuted} secureTextEntry value={password} onChangeText={setPassword} />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable style={styles.button} onPress={submit}>
             <Text style={styles.buttonText}>{mode === 'signup' ? 'Create account' : 'Sign in'}</Text>
@@ -215,6 +215,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     minWidth: 160,
     textAlign: 'center',
+    color: colors.textPrimary,
   },
   roleBadge: { backgroundColor: colors.neutralSoft, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 4 },
   roleBadgeText: { fontSize: 12, fontWeight: '700', color: colors.neutralSoftText, textTransform: 'uppercase', letterSpacing: 0.3 },
@@ -240,7 +241,7 @@ const styles = StyleSheet.create({
   memberRowContent: { flex: 1, gap: 2 },
   memberRowLabel: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
   memberRowSubtitle: { fontSize: 12, color: colors.textSecondary },
-  input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, padding: spacing.md, fontSize: 15 },
+  input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, padding: spacing.md, fontSize: 15, color: colors.textPrimary },
   button: { backgroundColor: colors.red, borderRadius: radius.md, padding: 14, alignItems: 'center' },
   buttonText: { color: colors.onAccent, fontWeight: '700' },
   switchText: { color: colors.red, textAlign: 'center', marginTop: spacing.sm },
