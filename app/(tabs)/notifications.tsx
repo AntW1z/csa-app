@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Alert, Text, Pressable, View, StyleSheet } from 'react-native';
+import { Text, Pressable, View, StyleSheet } from 'react-native';
 import { Swipeable, ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -11,6 +11,7 @@ import { colors, radius, spacing, shadow } from '../../src/theme';
 export default function NotificationsScreen() {
   const { profile, visibleNotifications } = useAuth();
   const [openNotif, setOpenNotif] = useState<PushMessage | null>(null);
+  const [confirmingClearAll, setConfirmingClearAll] = useState(false);
   const rowRefs = useRef<Record<string, Swipeable | null>>({});
 
   const isRead = (n: PushMessage) => !!profile?.readNotificationIds?.includes(n.id);
@@ -36,24 +37,15 @@ export default function NotificationsScreen() {
     setOpenNotif((cur) => (cur?.id === n.id ? null : cur));
   };
 
-  const clearAll = () => {
-    if (!profile || visibleNotifications.length === 0) return;
-    Alert.alert(
-      'Clear all notifications?',
-      'This removes every notification from your inbox. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: () => {
-            updateDoc(doc(db, 'users', profile.uid), {
-              deletedNotificationIds: arrayUnion(...visibleNotifications.map((n) => n.id)),
-            });
-          },
-        },
-      ]
-    );
+  // A native Alert.alert here silently does nothing on web (react-native-web
+  // doesn't implement multi-button alerts), so this uses the same in-app
+  // confirm overlay pattern as the rest of the app instead.
+  const confirmClearAll = () => {
+    if (!profile) return;
+    updateDoc(doc(db, 'users', profile.uid), {
+      deletedNotificationIds: arrayUnion(...visibleNotifications.map((n) => n.id)),
+    });
+    setConfirmingClearAll(false);
   };
 
   const renderRightActions = (n: PushMessage) => (
@@ -74,7 +66,7 @@ export default function NotificationsScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Notifications</Text>
         {visibleNotifications.length > 0 && (
-          <Pressable onPress={clearAll} hitSlop={8}>
+          <Pressable onPress={() => setConfirmingClearAll(true)} hitSlop={8}>
             <Text style={styles.clearAllText}>Clear all</Text>
           </Pressable>
         )}
@@ -93,14 +85,7 @@ export default function NotificationsScreen() {
             >
               <Pressable style={[styles.row, read && styles.rowRead]} onPress={() => openItem(n)}>
                 <View style={{ flex: 1 }}>
-                  <View style={styles.titleRow}>
-                    <Text style={[styles.title, !read && styles.titleUnread]} numberOfLines={1}>{n.title}</Text>
-                    {!read && (
-                      <View style={styles.newBadge}>
-                        <Text style={styles.newBadgeText}>NEW</Text>
-                      </View>
-                    )}
-                  </View>
+                  <Text style={[styles.title, !read && styles.titleUnread]} numberOfLines={1}>{n.title}</Text>
                   <Text style={[styles.body, read && styles.bodyRead]} numberOfLines={1}>{n.body}</Text>
                   <Text style={styles.meta}>{n.sentAt?.toDate ? n.sentAt.toDate().toLocaleString() : ''}</Text>
                 </View>
@@ -121,6 +106,28 @@ export default function NotificationsScreen() {
               {openNotif.sentAt?.toDate ? openNotif.sentAt.toDate().toLocaleString() : ''}
             </Text>
             <Text style={styles.detailBody}>{openNotif.body}</Text>
+          </View>
+        </View>
+      )}
+
+      {confirmingClearAll && (
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Pressable style={styles.closeBtn} onPress={() => setConfirmingClearAll(false)} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+            <Text style={styles.detailTitle}>Clear all notifications?</Text>
+            <Text style={[styles.detailBody, { marginTop: spacing.sm }]}>
+              This removes every notification from your inbox. This cannot be undone.
+            </Text>
+            <View style={styles.confirmRow}>
+              <Pressable style={styles.confirmDangerBtn} onPress={confirmClearAll}>
+                <Text style={styles.confirmDangerBtnText}>Clear All</Text>
+              </Pressable>
+              <Pressable style={styles.confirmCancelBtn} onPress={() => setConfirmingClearAll(false)}>
+                <Text style={styles.confirmCancelBtnText}>Cancel</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       )}
@@ -151,11 +158,8 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   rowRead: { backgroundColor: colors.surfaceMuted },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  title: { fontSize: 14, fontWeight: '600', color: colors.textPrimary, flexShrink: 1 },
+  title: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
   titleUnread: { fontWeight: '800' },
-  newBadge: { backgroundColor: colors.red, borderRadius: radius.pill, paddingHorizontal: 6, paddingVertical: 2 },
-  newBadgeText: { color: colors.onAccent, fontSize: 9, fontWeight: '800' },
   body: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   bodyRead: { color: colors.textMuted },
   meta: { fontSize: 11, color: colors.textMuted, marginTop: spacing.xs },
@@ -194,4 +198,9 @@ const styles = StyleSheet.create({
   detailTitle: { fontSize: 18, fontWeight: '800', color: colors.textPrimary },
   detailMeta: { fontSize: 12, color: colors.textMuted, marginTop: 4, marginBottom: spacing.md },
   detailBody: { fontSize: 15, color: colors.textPrimary, lineHeight: 21 },
+  confirmRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
+  confirmDangerBtn: { flex: 1, backgroundColor: colors.red, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
+  confirmDangerBtnText: { color: colors.onAccent, fontWeight: '700', fontSize: 13 },
+  confirmCancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
+  confirmCancelBtnText: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
 });
