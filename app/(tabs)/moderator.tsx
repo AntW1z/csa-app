@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
-import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage } from '../../src/types';
+import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor } from '../../src/types';
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
 import { formatEventTimeRange } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
@@ -244,6 +244,14 @@ export default function ModeratorScreen() {
   const [notifBody, setNotifBody] = useState('');
   const [notifAudience, setNotifAudience] = useState<Visibility>('everyone');
   const [sendingNotif, setSendingNotif] = useState<PushMessage | null>(null);
+  const [sponsors, setSponsors] = useState<Sponsor[]>([]);
+  const [showSponsorsPanel, setShowSponsorsPanel] = useState(false);
+  const [showNewSponsor, setShowNewSponsor] = useState(false);
+  const [editingSponsor, setEditingSponsor] = useState<Sponsor | null>(null);
+  const [sponsorName, setSponsorName] = useState('');
+  const [sponsorImageUrl, setSponsorImageUrl] = useState('');
+  const [sponsorDescription, setSponsorDescription] = useState('');
+  const [sponsorLink, setSponsorLink] = useState('');
 
   useEffect(() => {
     // Keyed on uid (not just mounted once) so a sign-out/sign-in cycle
@@ -278,6 +286,11 @@ export default function ModeratorScreen() {
   useEffect(() => {
     const q = query(collection(db, 'carouselItems'), orderBy('createdAt', 'asc'));
     return onSnapshot(q, (snap) => setCarousel(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CarouselItem))));
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'sponsors'), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => setSponsors(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sponsor))));
   }, []);
 
   useEffect(() => {
@@ -415,6 +428,51 @@ export default function ModeratorScreen() {
     } else {
       Alert.alert('Sent', `Delivered to ${reached} device${reached === 1 ? '' : 's'}.`);
     }
+  };
+
+  const openNewSponsor = () => {
+    setEditingSponsor(null);
+    setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription(''); setSponsorLink('');
+    setShowNewSponsor(true);
+  };
+
+  const openEditSponsor = (s: Sponsor) => {
+    setEditingSponsor(s);
+    setSponsorName(s.name);
+    setSponsorImageUrl(s.imageUrl);
+    setSponsorDescription(s.description ?? '');
+    setSponsorLink(s.link ?? '');
+    setShowNewSponsor(true);
+  };
+
+  const closeNewSponsor = () => {
+    setShowNewSponsor(false);
+    setEditingSponsor(null);
+  };
+
+  const canSaveSponsor = !!(sponsorName.trim() && sponsorImageUrl.trim());
+
+  const saveSponsor = async () => {
+    if (!canSaveSponsor) return;
+    const data = {
+      name: sponsorName.trim(),
+      imageUrl: sponsorImageUrl.trim(),
+      ...(sponsorDescription.trim() ? { description: sponsorDescription.trim() } : {}),
+      ...(sponsorLink.trim() ? { link: sponsorLink.trim() } : {}),
+    };
+    if (editingSponsor) {
+      await updateDoc(doc(db, 'sponsors', editingSponsor.id), data);
+      logAction(`Edited sponsor "${sponsorName}"`);
+    } else {
+      await addDoc(collection(db, 'sponsors'), { ...data, createdAt: serverTimestamp() });
+      logAction(`Added sponsor "${sponsorName}"`);
+    }
+    closeNewSponsor();
+  };
+
+  const deleteSponsor = (s: Sponsor) => {
+    deleteDoc(doc(db, 'sponsors', s.id));
+    logAction(`Removed sponsor "${s.name}"`);
   };
 
   const canPublish = !!(title.trim() && description.trim() && eventRange.start && eventRange.end);
@@ -604,6 +662,17 @@ export default function ModeratorScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.memberMgmtText}>Home carousel</Text>
             <Text style={styles.cardSubtitle}>{carousel.length} image{carousel.length === 1 ? '' : 's'}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
+
+        <Pressable style={styles.memberMgmtCard} onPress={() => setShowSponsorsPanel(true)}>
+          <View style={styles.memberMgmtIcon}>
+            <Ionicons name="storefront-outline" size={18} color={colors.red} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.memberMgmtText}>Sponsors</Text>
+            <Text style={styles.cardSubtitle}>{sponsors.length} sponsor{sponsors.length === 1 ? '' : 's'}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
@@ -1008,6 +1077,56 @@ export default function ModeratorScreen() {
                   </Pressable>
                 </>
               )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {showSponsorsPanel && (
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Pressable style={styles.closeBtn} onPress={() => setShowSponsorsPanel(false)} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.header}>Sponsors ({sponsors.length})</Text>
+              <Pressable style={styles.addBtn} onPress={openNewSponsor}>
+                <Ionicons name="add-circle-outline" size={18} color={colors.red} />
+                <Text style={styles.addBtnText}>New sponsor</Text>
+              </Pressable>
+              {sponsors.length === 0 && <Text style={styles.empty}>No sponsors yet.</Text>}
+              {sponsors.map((s) => (
+                <View key={s.id} style={styles.carouselRow}>
+                  <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
+                  <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
+                  <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
+                    <Text style={styles.editText}>edit</Text>
+                  </Pressable>
+                  <Pressable onPress={() => deleteSponsor(s)} hitSlop={8}>
+                    <Text style={styles.deleteText}>delete</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {showNewSponsor && (
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Pressable style={styles.closeBtn} onPress={closeNewSponsor} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.header}>{editingSponsor ? 'Edit sponsor' : 'New sponsor'}</Text>
+              <TextInput style={styles.input} placeholder="Sponsor name (required)" placeholderTextColor={colors.textMuted} value={sponsorName} onChangeText={setSponsorName} />
+              <TextInput style={styles.input} placeholder="Image URL (required)" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={sponsorImageUrl} onChangeText={setSponsorImageUrl} />
+              <TextInput style={styles.input} placeholder="Description (optional)" placeholderTextColor={colors.textMuted} value={sponsorDescription} onChangeText={setSponsorDescription} multiline />
+              <TextInput style={styles.input} placeholder="Link (optional)" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={sponsorLink} onChangeText={setSponsorLink} />
+              <Pressable style={[styles.button, !canSaveSponsor && styles.buttonDisabled]} onPress={saveSponsor} disabled={!canSaveSponsor}>
+                <Text style={styles.buttonText}>{editingSponsor ? 'Save changes' : 'Add sponsor'}</Text>
+              </Pressable>
             </ScrollView>
           </View>
         </View>

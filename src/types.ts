@@ -93,3 +93,14 @@ export interface CarouselItem {
   postId?: string;
   createdAt: any;
 }
+
+// A sponsor promo shown on the Sponsors tab — moderator-managed, same
+// public-read/moderator-write trust level as posts and the carousel.
+export interface Sponsor {
+  id: string;
+  name: string;
+  imageUrl: string;
+  description?: string;
+  link?: string;
+  createdAt: any;
+}

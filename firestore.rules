@@ -42,6 +42,13 @@ service cloud.firestore {
       allow write: if isModerator();
     }
 
+    // Sponsor promos shown on the Sponsors tab — same trust level as posts
+    // and the carousel: public to read, only moderators/admins curate it.
+    match /sponsors/{sponsorId} {
+      allow read: if true;
+      allow write: if isModerator();
+    }
+
     // Drafted/sent push notifications, managed from Manage > Notifications.
     // Only moderators can draft, edit, or send one — but once a message is
     // actually sent, any signed-in user can read it for their in-app inbox
