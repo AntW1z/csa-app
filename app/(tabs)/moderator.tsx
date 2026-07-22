@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
-import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor } from '../../src/types';
+import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorLinkType } from '../../src/types';
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
 import { formatEventTimeRange } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
@@ -251,7 +251,10 @@ export default function ModeratorScreen() {
   const [sponsorName, setSponsorName] = useState('');
   const [sponsorImageUrl, setSponsorImageUrl] = useState('');
   const [sponsorDescription, setSponsorDescription] = useState('');
+  const [sponsorCategory, setSponsorCategory] = useState('');
   const [sponsorLink, setSponsorLink] = useState('');
+  const [sponsorLinkType, setSponsorLinkType] = useState<SponsorLinkType>('website');
+  const [sponsorPromoText, setSponsorPromoText] = useState('');
 
   useEffect(() => {
     // Keyed on uid (not just mounted once) so a sign-out/sign-in cycle
@@ -432,7 +435,8 @@ export default function ModeratorScreen() {
 
   const openNewSponsor = () => {
     setEditingSponsor(null);
-    setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription(''); setSponsorLink('');
+    setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription('');
+    setSponsorCategory(''); setSponsorLink(''); setSponsorLinkType('website'); setSponsorPromoText('');
     setShowNewSponsor(true);
   };
 
@@ -441,7 +445,10 @@ export default function ModeratorScreen() {
     setSponsorName(s.name);
     setSponsorImageUrl(s.imageUrl);
     setSponsorDescription(s.description ?? '');
+    setSponsorCategory(s.category ?? '');
     setSponsorLink(s.link ?? '');
+    setSponsorLinkType(s.linkType ?? 'website');
+    setSponsorPromoText(s.promoText ?? '');
     setShowNewSponsor(true);
   };
 
@@ -458,7 +465,9 @@ export default function ModeratorScreen() {
       name: sponsorName.trim(),
       imageUrl: sponsorImageUrl.trim(),
       ...(sponsorDescription.trim() ? { description: sponsorDescription.trim() } : {}),
-      ...(sponsorLink.trim() ? { link: sponsorLink.trim() } : {}),
+      ...(sponsorCategory.trim() ? { category: sponsorCategory.trim() } : {}),
+      ...(sponsorLink.trim() ? { link: sponsorLink.trim(), linkType: sponsorLinkType } : {}),
+      ...(sponsorPromoText.trim() ? { promoText: sponsorPromoText.trim() } : {}),
     };
     if (editingSponsor) {
       await updateDoc(doc(db, 'sponsors', editingSponsor.id), data);
@@ -473,6 +482,23 @@ export default function ModeratorScreen() {
   const deleteSponsor = (s: Sponsor) => {
     deleteDoc(doc(db, 'sponsors', s.id));
     logAction(`Removed sponsor "${s.name}"`);
+  };
+
+  // At most one sponsor is featured at a time — same pattern as posts'
+  // toggleFeatured, using the already-live `sponsors` list rather than an
+  // extra query. Featuring only matters if promoText is set too (see
+  // Sponsors screen), but the toggle itself doesn't require it, so a
+  // moderator can star one ahead of writing the promo text.
+  const toggleSponsorFeatured = async (s: Sponsor) => {
+    if (s.featured) {
+      await updateDoc(doc(db, 'sponsors', s.id), { featured: false });
+      logAction(`Unfeatured sponsor "${s.name}"`);
+      return;
+    }
+    const prevFeatured = sponsors.find((x) => x.featured && x.id !== s.id);
+    if (prevFeatured) await updateDoc(doc(db, 'sponsors', prevFeatured.id), { featured: false });
+    await updateDoc(doc(db, 'sponsors', s.id), { featured: true });
+    logAction(`Featured sponsor "${s.name}"`);
   };
 
   const canPublish = !!(title.trim() && description.trim() && eventRange.start && eventRange.end);
@@ -1094,9 +1120,13 @@ export default function ModeratorScreen() {
                 <Ionicons name="add-circle-outline" size={18} color={colors.red} />
                 <Text style={styles.addBtnText}>New sponsor</Text>
               </Pressable>
+              <Text style={styles.hint}>Star one sponsor with promo text to feature it as the big banner at the top of the Sponsors tab.</Text>
               {sponsors.length === 0 && <Text style={styles.empty}>No sponsors yet.</Text>}
               {sponsors.map((s) => (
                 <View key={s.id} style={styles.carouselRow}>
+                  <Pressable onPress={() => toggleSponsorFeatured(s)} hitSlop={8}>
+                    <Ionicons name={s.featured ? 'star' : 'star-outline'} size={18} color={s.featured ? colors.amber : colors.textMuted} />
+                  </Pressable>
                   <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
                   <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
                   <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
@@ -1122,8 +1152,36 @@ export default function ModeratorScreen() {
               <Text style={styles.header}>{editingSponsor ? 'Edit sponsor' : 'New sponsor'}</Text>
               <TextInput style={styles.input} placeholder="Sponsor name (required)" placeholderTextColor={colors.textMuted} value={sponsorName} onChangeText={setSponsorName} />
               <TextInput style={styles.input} placeholder="Image URL (required)" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={sponsorImageUrl} onChangeText={setSponsorImageUrl} />
+              <TextInput style={styles.input} placeholder="Category (optional, e.g. Boba, Restaurant)" placeholderTextColor={colors.textMuted} value={sponsorCategory} onChangeText={setSponsorCategory} />
               <TextInput style={styles.input} placeholder="Description (optional)" placeholderTextColor={colors.textMuted} value={sponsorDescription} onChangeText={setSponsorDescription} multiline />
+
               <TextInput style={styles.input} placeholder="Link (optional)" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={sponsorLink} onChangeText={setSponsorLink} />
+              <Text style={styles.hint}>
+                What kind of link is it? This only changes the button label shown — the URL itself already opens
+                the sponsor's app instead of a browser automatically, if they support that.
+              </Text>
+              <View style={styles.modeToggle}>
+                {(['website', 'app', 'directions'] as SponsorLinkType[]).map((t) => (
+                  <Pressable
+                    key={t}
+                    style={[styles.modeBtn, sponsorLinkType === t && styles.modeBtnActive]}
+                    onPress={() => setSponsorLinkType(t)}
+                  >
+                    <Text style={[styles.modeBtnText, sponsorLinkType === t && styles.modeBtnTextActive]}>
+                      {t === 'website' ? 'Website' : t === 'app' ? 'App' : 'Directions'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <TextInput
+                style={[styles.input, { marginTop: spacing.sm }]}
+                placeholder="Current promo (optional, e.g. 20% off this week!)"
+                placeholderTextColor={colors.textMuted}
+                value={sponsorPromoText}
+                onChangeText={setSponsorPromoText}
+              />
+
               <Pressable style={[styles.button, !canSaveSponsor && styles.buttonDisabled]} onPress={saveSponsor} disabled={!canSaveSponsor}>
                 <Text style={styles.buttonText}>{editingSponsor ? 'Save changes' : 'Add sponsor'}</Text>
               </Pressable>

@@ -94,6 +94,13 @@ export interface CarouselItem {
   createdAt: any;
 }
 
+// What tapping a sponsor's card actually does — the URL itself is what
+// determines whether an app or a browser/maps app opens (iOS/Android
+// universal links handle that transparently), this only controls the CTA
+// label/icon shown so a moderator can set expectations correctly (e.g. a
+// boba shop's ordering app link vs. a restaurant with no app, just a map).
+export type SponsorLinkType = 'website' | 'app' | 'directions';
+
 // A sponsor promo shown on the Sponsors tab — moderator-managed, same
 // public-read/moderator-write trust level as posts and the carousel.
 export interface Sponsor {
@@ -101,6 +108,17 @@ export interface Sponsor {
   name: string;
   imageUrl: string;
   description?: string;
+  // Short tag shown as a pill on the card, e.g. "Boba", "Restaurant" —
+  // freeform text, not an enum, since sponsor types vary club to club.
+  category?: string;
   link?: string;
+  linkType?: SponsorLinkType;
+  // A short-lived call-out ("20% off this week!") — separate from the
+  // evergreen `description` so one doesn't have to be rewritten to update
+  // the other. At most one sponsor is `featured` at a time (same pattern
+  // as Post.featured), which is what promotes it to the big banner at the
+  // top of the Sponsors tab.
+  promoText?: string;
+  featured?: boolean;
   createdAt: any;
 }
