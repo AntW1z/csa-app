@@ -224,8 +224,6 @@ export default function ModeratorScreen() {
   const [eventRange, setEventRange] = useState<TimeRange>({ start: null, end: null, allDay: true });
   const [locationText, setLocationText] = useState('');
   const [visibility, setVisibility] = useState<'everyone' | 'members'>('everyone');
-  const [remindBeforeEnabled, setRemindBeforeEnabled] = useState(false);
-  const [remindBeforeMinutes, setRemindBeforeMinutes] = useState(30);
   const [type] = useState<'event' | 'announcement' | 'collab'>('event');
   const [imageUrl, setImageUrl] = useState('');
   const [imageUploading, setImageUploading] = useState(false);
@@ -379,6 +377,27 @@ export default function ModeratorScreen() {
     closeManageMember();
   };
 
+  // Only events with a specific (non-all-day) start time in the future can
+  // have an early reminder configured — an all-day promo has no
+  // meaningful "starts in X" moment, and a past event's reminder window
+  // has already closed.
+  const upcomingEvents = posts
+    .filter((p) => p.dateTime && !p.allDay && new Date(p.dateTime) > new Date())
+    .sort((a, b) => new Date(a.dateTime!).getTime() - new Date(b.dateTime!).getTime());
+
+  const toggleRemindBefore = (post: Post) => {
+    const enabling = !post.remindBeforeEnabled;
+    updateDoc(doc(db, 'posts', post.id), {
+      remindBeforeEnabled: enabling,
+      remindBeforeMinutes: post.remindBeforeMinutes ?? 30,
+    });
+    logAction(`${enabling ? 'Enabled' : 'Disabled'} early reminder for "${post.title}"`);
+  };
+
+  const setRemindBeforeMinutes = (post: Post, minutes: number) => {
+    updateDoc(doc(db, 'posts', post.id), { remindBeforeMinutes: minutes });
+  };
+
   const openNewNotif = () => {
     setEditingNotif(null);
     setNotifTitle(''); setNotifBody(''); setNotifAudience('everyone');
@@ -519,7 +538,6 @@ export default function ModeratorScreen() {
     setEditingPost(null);
     setTitle(''); setDescription(''); setEventRange({ start: null, end: null, allDay: true });
     setLocationText(''); setImageUrl(''); setVisibility('everyone'); setImageUploading(false);
-    setRemindBeforeEnabled(false); setRemindBeforeMinutes(30);
     setNewPostFormKey((k) => k + 1);
     setShowNewPost(true);
   };
@@ -532,8 +550,6 @@ export default function ModeratorScreen() {
     setImageUrl(post.imageUrl ?? '');
     setImageUploading(false);
     setVisibility(post.visibility);
-    setRemindBeforeEnabled(post.remindBeforeEnabled ?? false);
-    setRemindBeforeMinutes(post.remindBeforeMinutes ?? 30);
     setEventRange({
       start: post.dateTime ? new Date(post.dateTime) : null,
       end: post.endDateTime ? new Date(post.endDateTime) : null,
@@ -553,14 +569,16 @@ export default function ModeratorScreen() {
     // If the event's start time is changing, reset both notification-sent
     // flags — otherwise a reschedule could silently skip its "starting
     // now"/reminder pushes because they're marked sent against the old time.
+    // Reminder config itself (remindBeforeEnabled/Minutes) is edited from
+    // Manage > Notifications, not here — deliberately left out of this
+    // payload so saving other post edits can't clobber it back to a stale
+    // value from this form's local state.
     const dateTimeChanged = !!editingPost && editingPost.dateTime !== dateTimeIso;
     const data = {
       type, title, description, locationText, visibility,
       dateTime: dateTimeIso,
       endDateTime: eventRange.end.toISOString(),
       allDay: eventRange.allDay,
-      remindBeforeEnabled,
-      remindBeforeMinutes,
       ...(imageUrl ? { imageUrl } : {}),
       ...(dateTimeChanged ? { startNotificationSent: false, reminderSent: false } : {}),
     };
@@ -904,33 +922,9 @@ export default function ModeratorScreen() {
               </View>
 
               <Text style={styles.hint}>
-                Everyone gets a "starting now" notification automatically when this event begins — no setup needed.
+                Every event gets a "starting now" notification automatically — manage optional early
+                reminders from Manage {'>'} Notifications once this is saved.
               </Text>
-              {!eventRange.allDay && eventRange.start && (
-                <>
-                  <View style={[styles.row, { marginTop: spacing.sm }]}>
-                    <Text style={styles.rowLabel}>Remind participants beforehand</Text>
-                    <Switch
-                      value={remindBeforeEnabled}
-                      onValueChange={setRemindBeforeEnabled}
-                      trackColor={{ true: colors.red, false: colors.borderStrong }}
-                    />
-                  </View>
-                  {remindBeforeEnabled && (
-                    <View style={styles.reminderPresetRow}>
-                      {REMIND_BEFORE_PRESETS.map((m) => (
-                        <Pressable
-                          key={m}
-                          style={[styles.reminderPresetBtn, remindBeforeMinutes === m && styles.modeBtnActive]}
-                          onPress={() => setRemindBeforeMinutes(m)}
-                        >
-                          <Text style={[styles.reminderPresetText, remindBeforeMinutes === m && styles.modeBtnTextActive]}>{m} min</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-                </>
-              )}
 
               <Pressable style={[styles.button, !canPublish && styles.buttonDisabled, { marginTop: spacing.md }]} onPress={savePost} disabled={!canPublish}>
                 <Text style={styles.buttonText}>{editingPost ? 'Save changes' : 'Publish'}</Text>
@@ -1261,6 +1255,43 @@ export default function ModeratorScreen() {
             </Pressable>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.header}>Notifications</Text>
+
+              <Text style={styles.manageSectionLabel}>Event reminders</Text>
+              <Text style={styles.hint}>
+                Every event sends a "starting now" push automatically. Turn on an early reminder for
+                specific events here.
+              </Text>
+              {upcomingEvents.length === 0 && (
+                <Text style={styles.empty}>No upcoming events yet.</Text>
+              )}
+              {upcomingEvents.map((post) => (
+                <View key={post.id} style={styles.notifRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.notifTitle} numberOfLines={1}>{post.title}</Text>
+                    <Text style={styles.logMeta}>{post.dateTime ? new Date(post.dateTime).toLocaleString() : ''}</Text>
+                    {post.remindBeforeEnabled && (
+                      <View style={styles.reminderPresetRow}>
+                        {REMIND_BEFORE_PRESETS.map((m) => (
+                          <Pressable
+                            key={m}
+                            style={[styles.reminderPresetBtn, post.remindBeforeMinutes === m && styles.modeBtnActive]}
+                            onPress={() => setRemindBeforeMinutes(post, m)}
+                          >
+                            <Text style={[styles.reminderPresetText, post.remindBeforeMinutes === m && styles.modeBtnTextActive]}>{m} min</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                  <Switch
+                    value={!!post.remindBeforeEnabled}
+                    onValueChange={() => toggleRemindBefore(post)}
+                    trackColor={{ true: colors.red, false: colors.borderStrong }}
+                  />
+                </View>
+              ))}
+
+              <Text style={[styles.header, { marginTop: spacing.lg }]}>Custom messages</Text>
               <Pressable style={styles.addBtn} onPress={openNewNotif}>
                 <Ionicons name="add-circle-outline" size={18} color={colors.red} />
                 <Text style={styles.addBtnText}>New message</Text>
