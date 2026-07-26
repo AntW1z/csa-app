@@ -52,6 +52,10 @@ export interface Post {
   // At most one post is featured at a time — that's the one used as the
   // full-screen launch popup on Home. Moderators toggle this in Manage.
   featured?: boolean;
+  // Set by the scheduled Cloud Function (functions/src/eventReminders.ts)
+  // once it's sent the "starting soon" push for this event — prevents
+  // re-sending on the function's next run. Never set client-side.
+  reminderSent?: boolean;
   createdBy: string;
   createdAt: any;
 }

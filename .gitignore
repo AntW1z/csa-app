@@ -1,4 +1,5 @@
 node_modules/
+functions/lib/
 .env
 .env*.local
 .expo/

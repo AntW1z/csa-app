@@ -419,11 +419,11 @@ export default function ModeratorScreen() {
   const confirmSendNotif = async () => {
     if (!sendingNotif) return;
     const snap = await getDocs(collection(db, 'users'));
-    const tokens = snap.docs
+    const recipients = snap.docs
       .map((d) => d.data() as UserProfile)
       .filter((u) => u.pushToken && (sendingNotif.audience === 'everyone' || u.role !== 'user'))
-      .map((u) => u.pushToken as string);
-    const reached = await sendPushToTokens(tokens, sendingNotif.title, sendingNotif.body);
+      .map((u) => ({ uid: u.uid, token: u.pushToken as string }));
+    const reached = await sendPushToTokens(recipients, sendingNotif.title, sendingNotif.body);
     await updateDoc(doc(db, 'notifications', sendingNotif.id), { status: 'sent', sentAt: serverTimestamp() });
     logAction(`Sent notification "${sendingNotif.title}" to ${sendingNotif.audience === 'everyone' ? 'everyone' : 'members'} (${reached} device${reached === 1 ? '' : 's'})`);
     setSendingNotif(null);
