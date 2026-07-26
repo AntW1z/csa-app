@@ -22,6 +22,13 @@ const CATEGORY_LABEL: Record<SponsorCategory, string> = {
 };
 const CATEGORY_ORDER: SponsorCategory[] = ['food', 'services', 'other'];
 
+// A true catch-all — anything that isn't exactly 'food' or 'services'
+// resolves to 'other', so a sponsor created before this category picker
+// existed (or with any unexpected value) still shows up somewhere instead
+// of silently disappearing.
+const resolveCategory = (s: Sponsor): SponsorCategory =>
+  s.category === 'food' || s.category === 'services' ? s.category : 'other';
+
 export default function SponsorsScreen() {
   const [sponsors, setSponsors] = useState<Sponsor[]>([]);
   const [selected, setSelected] = useState<Sponsor | null>(null);
@@ -35,7 +42,7 @@ export default function SponsorsScreen() {
   const rows = CATEGORY_ORDER.map((cat) => ({
     category: cat,
     label: CATEGORY_LABEL[cat],
-    items: sponsors.filter((s) => (s.category ?? 'other') === cat),
+    items: sponsors.filter((s) => resolveCategory(s) === cat),
   })).filter((r) => r.items.length > 0);
 
   const open = (s: Sponsor) => s.link && Linking.openURL(s.link);
@@ -97,7 +104,7 @@ export default function SponsorsScreen() {
               <Image source={{ uri: selected.imageUrl }} style={styles.detailImage} resizeMode="cover" />
               <View style={styles.detailBody}>
                 <View style={styles.categoryPill}>
-                  <Text style={styles.categoryPillText}>{CATEGORY_LABEL[selected.category ?? 'other']}</Text>
+                  <Text style={styles.categoryPillText}>{CATEGORY_LABEL[resolveCategory(selected)]}</Text>
                 </View>
                 <Text style={styles.detailName}>{selected.name}</Text>
 
