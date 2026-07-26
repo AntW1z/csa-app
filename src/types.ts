@@ -52,6 +52,17 @@ export interface Post {
   // At most one post is featured at a time — that's the one used as the
   // full-screen launch popup on Home. Moderators toggle this in Manage.
   featured?: boolean;
+  // Every non-all-day event automatically gets a "starting now" push when
+  // its start time arrives — always on, not configurable. Off by default
+  // is the *additional* early reminder ("starting in N mins"), which a
+  // moderator opts into per-event and picks a lead time for (0-60 min).
+  // Both flags below are set by the scheduled Cloud Function
+  // (functions/src/eventReminders.ts) once each has actually fired, to
+  // guarantee each notification only ever goes out once.
+  remindBeforeEnabled?: boolean;
+  remindBeforeMinutes?: number;
+  startNotificationSent?: boolean;
+  reminderSent?: boolean;
   createdBy: string;
   createdAt: any;
 }
@@ -69,24 +80,19 @@ export interface LogEntry {
   createdAt: any;
 }
 
-// A push notification a moderator has drafted from the Manage dashboard.
-// Either sent on demand (status 'draft' -> 'sent', see src/notifications.ts)
-// or, if linked to an event, automatically fired by the scheduled Cloud
-// Function (functions/src/eventReminders.ts) at eventDateTime minus
-// reminderMinutesBefore (status 'scheduled' -> 'sent'). eventDateTime is
-// denormalized from the linked post at schedule time so the function can
-// find due reminders with a single collection query, no per-message
-// lookup of its linked post needed.
+// A push notification, either drafted by a moderator from Manage >
+// Notifications and sent on demand (see src/notifications.ts), or created
+// directly by the scheduled Cloud Function for an automatic per-event
+// reminder (functions/src/eventReminders.ts) — the two share this
+// collection so both show up in the same sent-history and in-app inbox.
+// createdBy is a moderator's uid for the former, the sentinel 'system' for
+// the latter (there's no human actor to log against).
 export interface PushMessage {
   id: string;
   title: string;
   body: string;
   audience: Visibility;
-  status: 'draft' | 'scheduled' | 'sent';
-  linkedPostId?: string;
-  linkedPostTitle?: string;
-  eventDateTime?: string;
-  reminderMinutesBefore?: number;
+  status: 'draft' | 'sent';
   sentAt?: any;
   createdBy: string;
   createdAt: any;

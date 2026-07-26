@@ -19,15 +19,9 @@ const toDateString = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-$
 
 export type TimeRange = { start: Date | null; end: Date | null; allDay: boolean };
 
-// Presets for "remind this long before the event starts" — covers the
-// common cases without needing a free-form time input.
-const REMINDER_PRESETS = [
-  { label: '15 min before', minutes: 15 },
-  { label: '30 min before', minutes: 30 },
-  { label: '1 hour before', minutes: 60 },
-  { label: '2 hours before', minutes: 120 },
-  { label: '1 day before', minutes: 1440 },
-];
+// Presets for the optional early reminder on an event, capped at 60
+// minutes since anything longer overlaps with just... checking the app.
+const REMIND_BEFORE_PRESETS = [5, 10, 15, 30, 45, 60];
 
 // 7am-11:30pm in 30-minute steps — a scrollable row of fixed slots instead
 // of free text, so times stay consistent, sortable, and comparable.
@@ -230,6 +224,8 @@ export default function ModeratorScreen() {
   const [eventRange, setEventRange] = useState<TimeRange>({ start: null, end: null, allDay: true });
   const [locationText, setLocationText] = useState('');
   const [visibility, setVisibility] = useState<'everyone' | 'members'>('everyone');
+  const [remindBeforeEnabled, setRemindBeforeEnabled] = useState(false);
+  const [remindBeforeMinutes, setRemindBeforeMinutes] = useState(30);
   const [type] = useState<'event' | 'announcement' | 'collab'>('event');
   const [imageUrl, setImageUrl] = useState('');
   const [imageUploading, setImageUploading] = useState(false);
@@ -256,9 +252,6 @@ export default function ModeratorScreen() {
   const [notifTitle, setNotifTitle] = useState('');
   const [notifBody, setNotifBody] = useState('');
   const [notifAudience, setNotifAudience] = useState<Visibility>('everyone');
-  const [notifLinkedPost, setNotifLinkedPost] = useState<Post | null>(null);
-  const [notifReminderMinutes, setNotifReminderMinutes] = useState(60);
-  const [showEventPicker, setShowEventPicker] = useState(false);
   const [sendingNotif, setSendingNotif] = useState<PushMessage | null>(null);
   const [sponsors, setSponsors] = useState<Sponsor[]>([]);
   const [showSponsorsPanel, setShowSponsorsPanel] = useState(false);
@@ -386,17 +379,9 @@ export default function ModeratorScreen() {
     closeManageMember();
   };
 
-  // Only events with a specific (non-all-day) start time in the future can
-  // have a reminder scheduled against them — an all-day promo has no
-  // meaningful "starts in X" moment.
-  const upcomingEvents = posts
-    .filter((p) => p.dateTime && !p.allDay && new Date(p.dateTime) > new Date())
-    .sort((a, b) => new Date(a.dateTime!).getTime() - new Date(b.dateTime!).getTime());
-
   const openNewNotif = () => {
     setEditingNotif(null);
     setNotifTitle(''); setNotifBody(''); setNotifAudience('everyone');
-    setNotifLinkedPost(null); setNotifReminderMinutes(60); setShowEventPicker(false);
     setShowNewNotif(true);
   };
 
@@ -405,9 +390,6 @@ export default function ModeratorScreen() {
     setNotifTitle(msg.title);
     setNotifBody(msg.body);
     setNotifAudience(msg.audience);
-    setNotifLinkedPost(msg.linkedPostId ? posts.find((p) => p.id === msg.linkedPostId) ?? null : null);
-    setNotifReminderMinutes(msg.reminderMinutesBefore ?? 60);
-    setShowEventPicker(false);
     setShowNewNotif(true);
   };
 
@@ -420,23 +402,13 @@ export default function ModeratorScreen() {
 
   const saveNotifDraft = async () => {
     if (!canSaveNotif || !profile) return;
-    const data = {
-      title: notifTitle.trim(),
-      body: notifBody.trim(),
-      audience: notifAudience,
-      status: notifLinkedPost ? ('scheduled' as const) : ('draft' as const),
-      ...(notifLinkedPost
-        ? { linkedPostId: notifLinkedPost.id, linkedPostTitle: notifLinkedPost.title, eventDateTime: notifLinkedPost.dateTime, reminderMinutesBefore: notifReminderMinutes }
-        : {}),
-    };
+    const data = { title: notifTitle.trim(), body: notifBody.trim(), audience: notifAudience };
     if (editingNotif) {
       await updateDoc(doc(db, 'notifications', editingNotif.id), data);
-      logAction(`Edited ${notifLinkedPost ? 'scheduled' : 'draft'} notification "${notifTitle}"`);
+      logAction(`Edited draft notification "${notifTitle}"`);
     } else {
-      await addDoc(collection(db, 'notifications'), { ...data, createdBy: profile.uid, createdAt: serverTimestamp() });
-      logAction(notifLinkedPost
-        ? `Scheduled a reminder for "${notifLinkedPost.title}" (${notifTitle})`
-        : `Drafted notification "${notifTitle}"`);
+      await addDoc(collection(db, 'notifications'), { ...data, status: 'draft', createdBy: profile.uid, createdAt: serverTimestamp() });
+      logAction(`Drafted notification "${notifTitle}"`);
     }
     closeNewNotif();
   };
@@ -547,6 +519,7 @@ export default function ModeratorScreen() {
     setEditingPost(null);
     setTitle(''); setDescription(''); setEventRange({ start: null, end: null, allDay: true });
     setLocationText(''); setImageUrl(''); setVisibility('everyone'); setImageUploading(false);
+    setRemindBeforeEnabled(false); setRemindBeforeMinutes(30);
     setNewPostFormKey((k) => k + 1);
     setShowNewPost(true);
   };
@@ -559,6 +532,8 @@ export default function ModeratorScreen() {
     setImageUrl(post.imageUrl ?? '');
     setImageUploading(false);
     setVisibility(post.visibility);
+    setRemindBeforeEnabled(post.remindBeforeEnabled ?? false);
+    setRemindBeforeMinutes(post.remindBeforeMinutes ?? 30);
     setEventRange({
       start: post.dateTime ? new Date(post.dateTime) : null,
       end: post.endDateTime ? new Date(post.endDateTime) : null,
@@ -574,12 +549,20 @@ export default function ModeratorScreen() {
 
   const savePost = async () => {
     if (!canPublish || !profile || !eventRange.start || !eventRange.end) return;
+    const dateTimeIso = eventRange.start.toISOString();
+    // If the event's start time is changing, reset both notification-sent
+    // flags — otherwise a reschedule could silently skip its "starting
+    // now"/reminder pushes because they're marked sent against the old time.
+    const dateTimeChanged = !!editingPost && editingPost.dateTime !== dateTimeIso;
     const data = {
       type, title, description, locationText, visibility,
-      dateTime: eventRange.start.toISOString(),
+      dateTime: dateTimeIso,
       endDateTime: eventRange.end.toISOString(),
       allDay: eventRange.allDay,
+      remindBeforeEnabled,
+      remindBeforeMinutes,
       ...(imageUrl ? { imageUrl } : {}),
+      ...(dateTimeChanged ? { startNotificationSent: false, reminderSent: false } : {}),
     };
     if (editingPost) {
       await updateDoc(doc(db, 'posts', editingPost.id), data);
@@ -751,8 +734,7 @@ export default function ModeratorScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.memberMgmtText}>Notifications</Text>
             <Text style={styles.cardSubtitle}>
-              {pushMessages.filter((m) => m.status === 'draft').length} draft{pushMessages.filter((m) => m.status === 'draft').length === 1 ? '' : 's'},{' '}
-              {pushMessages.filter((m) => m.status === 'scheduled').length} scheduled
+              {pushMessages.filter((m) => m.status === 'draft').length} draft{pushMessages.filter((m) => m.status === 'draft').length === 1 ? '' : 's'}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -920,7 +902,37 @@ export default function ModeratorScreen() {
                   trackColor={{ true: colors.red, false: colors.borderStrong }}
                 />
               </View>
-              <Pressable style={[styles.button, !canPublish && styles.buttonDisabled]} onPress={savePost} disabled={!canPublish}>
+
+              <Text style={styles.hint}>
+                Everyone gets a "starting now" notification automatically when this event begins — no setup needed.
+              </Text>
+              {!eventRange.allDay && eventRange.start && (
+                <>
+                  <View style={[styles.row, { marginTop: spacing.sm }]}>
+                    <Text style={styles.rowLabel}>Remind participants beforehand</Text>
+                    <Switch
+                      value={remindBeforeEnabled}
+                      onValueChange={setRemindBeforeEnabled}
+                      trackColor={{ true: colors.red, false: colors.borderStrong }}
+                    />
+                  </View>
+                  {remindBeforeEnabled && (
+                    <View style={styles.reminderPresetRow}>
+                      {REMIND_BEFORE_PRESETS.map((m) => (
+                        <Pressable
+                          key={m}
+                          style={[styles.reminderPresetBtn, remindBeforeMinutes === m && styles.modeBtnActive]}
+                          onPress={() => setRemindBeforeMinutes(m)}
+                        >
+                          <Text style={[styles.reminderPresetText, remindBeforeMinutes === m && styles.modeBtnTextActive]}>{m} min</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+
+              <Pressable style={[styles.button, !canPublish && styles.buttonDisabled, { marginTop: spacing.md }]} onPress={savePost} disabled={!canPublish}>
                 <Text style={styles.buttonText}>{editingPost ? 'Save changes' : 'Publish'}</Text>
               </Pressable>
             </ScrollView>
@@ -1284,41 +1296,6 @@ export default function ModeratorScreen() {
               ))}
 
               <Text style={[styles.header, { marginTop: spacing.lg }]}>
-                Scheduled ({pushMessages.filter((m) => m.status === 'scheduled').length})
-              </Text>
-              {pushMessages.filter((m) => m.status === 'scheduled').length === 0 && (
-                <Text style={styles.empty}>Nothing scheduled — link a message to an event to remind people before it starts.</Text>
-              )}
-              {pushMessages.filter((m) => m.status === 'scheduled').map((msg) => {
-                const fireAt = msg.eventDateTime && msg.reminderMinutesBefore != null
-                  ? new Date(new Date(msg.eventDateTime).getTime() - msg.reminderMinutesBefore * 60000)
-                  : null;
-                return (
-                  <View key={msg.id} style={styles.notifRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.notifTitle} numberOfLines={1}>{msg.title}</Text>
-                      <Text style={styles.notifBody} numberOfLines={2}>{msg.body}</Text>
-                      <Text style={styles.logMeta}>For "{msg.linkedPostTitle}" — fires {fireAt ? fireAt.toLocaleString() : 'soon'}</Text>
-                      <View style={styles.roleTag}>
-                        <Text style={styles.roleTagText}>{msg.audience === 'everyone' ? 'Everyone' : 'Members'}</Text>
-                      </View>
-                    </View>
-                    <View style={{ gap: spacing.sm, alignItems: 'flex-end' }}>
-                      <Pressable onPress={() => setSendingNotif(msg)} hitSlop={8}>
-                        <Text style={styles.sendText}>send now</Text>
-                      </Pressable>
-                      <Pressable onPress={() => openEditNotif(msg)} hitSlop={8}>
-                        <Text style={styles.editText}>edit</Text>
-                      </Pressable>
-                      <Pressable onPress={() => deleteNotif(msg)} hitSlop={8}>
-                        <Text style={styles.deleteText}>delete</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                );
-              })}
-
-              <Text style={[styles.header, { marginTop: spacing.lg }]}>
                 Sent ({pushMessages.filter((m) => m.status === 'sent').length})
               </Text>
               {pushMessages.filter((m) => m.status === 'sent').length === 0 && (
@@ -1348,7 +1325,7 @@ export default function ModeratorScreen() {
               <Ionicons name="close" size={20} color={colors.textPrimary} />
             </Pressable>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <Text style={styles.header}>{editingNotif ? 'Edit notification' : 'New notification'}</Text>
+              <Text style={styles.header}>{editingNotif ? 'Edit draft' : 'New notification'}</Text>
               <TextInput style={styles.input} placeholder="Title (required)" placeholderTextColor={colors.textMuted} value={notifTitle} onChangeText={setNotifTitle} />
               <TextInput style={styles.input} placeholder="Message (required)" placeholderTextColor={colors.textMuted} value={notifBody} onChangeText={setNotifBody} multiline />
               <View style={styles.modeToggle}>
@@ -1365,80 +1342,9 @@ export default function ModeratorScreen() {
                   <Text style={[styles.modeBtnText, notifAudience === 'members' && styles.modeBtnTextActive]}>Members only</Text>
                 </Pressable>
               </View>
-
-              <Text style={styles.manageSectionLabel}>Schedule (optional)</Text>
-              {notifLinkedPost ? (
-                <View style={styles.linkedEventBox}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.linkedEventTitle} numberOfLines={1}>{notifLinkedPost.title}</Text>
-                    <Text style={styles.hint}>
-                      {notifLinkedPost.dateTime ? new Date(notifLinkedPost.dateTime).toLocaleString() : ''}
-                    </Text>
-                  </View>
-                  <Pressable onPress={() => setNotifLinkedPost(null)} hitSlop={8}>
-                    <Text style={styles.deleteText}>unlink</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <Pressable style={styles.addBtn} onPress={() => setShowEventPicker(true)}>
-                  <Ionicons name="calendar-outline" size={16} color={colors.red} />
-                  <Text style={styles.addBtnText}>Link to an event</Text>
-                </Pressable>
-              )}
-
-              {notifLinkedPost && (
-                <>
-                  <Text style={[styles.hint, { marginTop: spacing.sm }]}>Send this reminder:</Text>
-                  <View style={styles.reminderPresetRow}>
-                    {REMINDER_PRESETS.map((preset) => (
-                      <Pressable
-                        key={preset.minutes}
-                        style={[styles.reminderPresetBtn, notifReminderMinutes === preset.minutes && styles.modeBtnActive]}
-                        onPress={() => setNotifReminderMinutes(preset.minutes)}
-                      >
-                        <Text style={[styles.reminderPresetText, notifReminderMinutes === preset.minutes && styles.modeBtnTextActive]}>
-                          {preset.label}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </>
-              )}
-
-              <Pressable style={[styles.button, !canSaveNotif && styles.buttonDisabled, { marginTop: spacing.md }]} onPress={saveNotifDraft} disabled={!canSaveNotif}>
-                <Text style={styles.buttonText}>
-                  {notifLinkedPost ? 'Schedule reminder' : editingNotif ? 'Save changes' : 'Save as draft'}
-                </Text>
+              <Pressable style={[styles.button, !canSaveNotif && styles.buttonDisabled]} onPress={saveNotifDraft} disabled={!canSaveNotif}>
+                <Text style={styles.buttonText}>{editingNotif ? 'Save changes' : 'Save as draft'}</Text>
               </Pressable>
-            </ScrollView>
-          </View>
-        </View>
-      )}
-
-      {showEventPicker && (
-        <View style={styles.overlay}>
-          <View style={styles.modalCard}>
-            <Pressable style={styles.closeBtn} onPress={() => setShowEventPicker(false)} hitSlop={8}>
-              <Ionicons name="close" size={20} color={colors.textPrimary} />
-            </Pressable>
-            <ScrollView>
-              <Text style={styles.header}>Link to an event</Text>
-              {upcomingEvents.length === 0 && (
-                <Text style={styles.empty}>No upcoming events with a specific time yet — all-day events can't have a reminder.</Text>
-              )}
-              {upcomingEvents.map((post) => (
-                <Pressable
-                  key={post.id}
-                  style={styles.eventPickRow}
-                  onPress={() => { setNotifLinkedPost(post); setShowEventPicker(false); }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.eventPickTitle} numberOfLines={1}>{post.title}</Text>
-                    <Text style={styles.hint}>{post.dateTime ? new Date(post.dateTime).toLocaleString() : ''}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                </Pressable>
-              ))}
             </ScrollView>
           </View>
         </View>
@@ -1453,8 +1359,7 @@ export default function ModeratorScreen() {
             <Text style={styles.header}>Send notification</Text>
             <Text style={styles.clearPrompt}>
               Send <Text style={styles.clearPromptBold}>"{sendingNotif.title}"</Text> to{' '}
-              <Text style={styles.clearPromptBold}>{sendingNotif.audience === 'everyone' ? 'everyone' : 'members'}</Text> right now?
-              {sendingNotif.status === 'scheduled' ? ' This sends it immediately instead of waiting for its scheduled time.' : ''} This cannot be undone.
+              <Text style={styles.clearPromptBold}>{sendingNotif.audience === 'everyone' ? 'everyone' : 'members'}</Text>? This cannot be undone.
             </Text>
             <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
               <Pressable style={styles.dangerBtn} onPress={confirmSendNotif}>
@@ -1622,17 +1527,6 @@ const styles = StyleSheet.create({
   },
   notifTitle: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
   notifBody: { fontSize: 12, color: colors.textSecondary, marginTop: 2, marginBottom: spacing.xs },
-  linkedEventBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  linkedEventTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   reminderPresetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.xs },
   reminderPresetBtn: {
     borderWidth: 1,
