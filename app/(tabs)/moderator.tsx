@@ -12,6 +12,7 @@ import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Vi
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
 import { formatEventTimeRange } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
+import ImagePickerField from '../../src/components/ImagePickerField';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const toDateString = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -221,10 +222,12 @@ export default function ModeratorScreen() {
   const [visibility, setVisibility] = useState<'everyone' | 'members'>('everyone');
   const [type] = useState<'event' | 'announcement' | 'collab'>('event');
   const [imageUrl, setImageUrl] = useState('');
+  const [imageUploading, setImageUploading] = useState(false);
   const [carousel, setCarousel] = useState<CarouselItem[]>([]);
   const [showCarouselPanel, setShowCarouselPanel] = useState(false);
   const [carouselMode, setCarouselMode] = useState<'image' | 'event'>('image');
   const [carouselImageUrl, setCarouselImageUrl] = useState('');
+  const [carouselImageUploading, setCarouselImageUploading] = useState(false);
   const [showPendingPanel, setShowPendingPanel] = useState(false);
   const [showPostsPanel, setShowPostsPanel] = useState(false);
   const [members, setMembers] = useState<UserProfile[]>([]);
@@ -250,6 +253,7 @@ export default function ModeratorScreen() {
   const [editingSponsor, setEditingSponsor] = useState<Sponsor | null>(null);
   const [sponsorName, setSponsorName] = useState('');
   const [sponsorImageUrl, setSponsorImageUrl] = useState('');
+  const [sponsorImageUploading, setSponsorImageUploading] = useState(false);
   const [sponsorDescription, setSponsorDescription] = useState('');
   const [sponsorCategory, setSponsorCategory] = useState('');
   const [sponsorLink, setSponsorLink] = useState('');
@@ -437,6 +441,7 @@ export default function ModeratorScreen() {
     setEditingSponsor(null);
     setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription('');
     setSponsorCategory(''); setSponsorLink(''); setSponsorLinkType('website'); setSponsorPromoText('');
+    setSponsorImageUploading(false);
     setShowNewSponsor(true);
   };
 
@@ -444,6 +449,7 @@ export default function ModeratorScreen() {
     setEditingSponsor(s);
     setSponsorName(s.name);
     setSponsorImageUrl(s.imageUrl);
+    setSponsorImageUploading(false);
     setSponsorDescription(s.description ?? '');
     setSponsorCategory(s.category ?? '');
     setSponsorLink(s.link ?? '');
@@ -457,7 +463,7 @@ export default function ModeratorScreen() {
     setEditingSponsor(null);
   };
 
-  const canSaveSponsor = !!(sponsorName.trim() && sponsorImageUrl.trim());
+  const canSaveSponsor = !!(sponsorName.trim() && sponsorImageUrl.trim()) && !sponsorImageUploading;
 
   const saveSponsor = async () => {
     if (!canSaveSponsor) return;
@@ -501,12 +507,12 @@ export default function ModeratorScreen() {
     logAction(`Featured sponsor "${s.name}"`);
   };
 
-  const canPublish = !!(title.trim() && description.trim() && eventRange.start && eventRange.end);
+  const canPublish = !!(title.trim() && description.trim() && eventRange.start && eventRange.end) && !imageUploading;
 
   const openNewPost = () => {
     setEditingPost(null);
     setTitle(''); setDescription(''); setEventRange({ start: null, end: null, allDay: true });
-    setLocationText(''); setImageUrl(''); setVisibility('everyone');
+    setLocationText(''); setImageUrl(''); setVisibility('everyone'); setImageUploading(false);
     setNewPostFormKey((k) => k + 1);
     setShowNewPost(true);
   };
@@ -517,6 +523,7 @@ export default function ModeratorScreen() {
     setDescription(post.description);
     setLocationText(post.locationText ?? '');
     setImageUrl(post.imageUrl ?? '');
+    setImageUploading(false);
     setVisibility(post.visibility);
     setEventRange({
       start: post.dateTime ? new Date(post.dateTime) : null,
@@ -816,8 +823,17 @@ export default function ModeratorScreen() {
 
               {carouselMode === 'image' ? (
                 <>
-                  <TextInput style={styles.input} placeholder="Image URL" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={carouselImageUrl} onChangeText={setCarouselImageUrl} />
-                  <Pressable style={styles.button} onPress={addCarouselItem}>
+                  <ImagePickerField
+                    folder="carousel"
+                    value={carouselImageUrl}
+                    onChange={setCarouselImageUrl}
+                    onUploadingChange={setCarouselImageUploading}
+                  />
+                  <Pressable
+                    style={[styles.button, (!carouselImageUrl || carouselImageUploading) && styles.buttonDisabled]}
+                    onPress={addCarouselItem}
+                    disabled={!carouselImageUrl || carouselImageUploading}
+                  >
                     <Text style={styles.buttonText}>Add to carousel</Text>
                   </Pressable>
                 </>
@@ -860,7 +876,7 @@ export default function ModeratorScreen() {
                 initial={editingPost ? eventRange : undefined}
               />
               <TextInput style={styles.input} placeholder="Location (optional)" placeholderTextColor={colors.textMuted} value={locationText} onChangeText={setLocationText} />
-              <TextInput style={styles.input} placeholder="Image URL (optional)" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={imageUrl} onChangeText={setImageUrl} />
+              <ImagePickerField folder="posts" value={imageUrl} onChange={setImageUrl} onUploadingChange={setImageUploading} />
               <View style={styles.row}>
                 <Text style={styles.rowLabel}>Members only</Text>
                 <Switch
@@ -1151,7 +1167,7 @@ export default function ModeratorScreen() {
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.header}>{editingSponsor ? 'Edit sponsor' : 'New sponsor'}</Text>
               <TextInput style={styles.input} placeholder="Sponsor name (required)" placeholderTextColor={colors.textMuted} value={sponsorName} onChangeText={setSponsorName} />
-              <TextInput style={styles.input} placeholder="Image URL (required)" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={sponsorImageUrl} onChangeText={setSponsorImageUrl} />
+              <ImagePickerField folder="sponsors" value={sponsorImageUrl} onChange={setSponsorImageUrl} onUploadingChange={setSponsorImageUploading} />
               <TextInput style={styles.input} placeholder="Category (optional, e.g. Boba, Restaurant)" placeholderTextColor={colors.textMuted} value={sponsorCategory} onChangeText={setSponsorCategory} />
               <TextInput style={styles.input} placeholder="Description (optional)" placeholderTextColor={colors.textMuted} value={sponsorDescription} onChangeText={setSponsorDescription} multiline />
 

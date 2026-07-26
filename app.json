@@ -33,7 +33,13 @@
           "imageWidth": 76
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CSA needs access to your photos so moderators can attach images to posts, sponsors, and the home carousel."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

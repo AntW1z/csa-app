@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Mirrors firestore.rules' isModerator() — Storage rules can read
+    // Firestore directly, so role checks stay in one place (the users
+    // collection) instead of duplicating a role system here.
+    function isModerator() {
+      return request.auth != null &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['moderator', 'admin'];
+    }
+
+    // All uploaded images (posts, sponsors, the home carousel) live under
+    // this one prefix — public to read (same as the Firestore docs that
+    // reference them), only moderators/admins can upload. Capped at 10MB
+    // and images-only so a compromised or buggy client can't run up
+    // storage/bandwidth costs with arbitrary large files.
+    match /images/{allPaths=**} {
+      allow read: if true;
+      allow write: if isModerator()
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+  }
+}
