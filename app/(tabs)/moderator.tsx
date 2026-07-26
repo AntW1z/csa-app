@@ -4,7 +4,7 @@ import { Calendar, DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import {
   collection, onSnapshot, query, where, orderBy, doc, updateDoc,
-  addDoc, deleteDoc, serverTimestamp, getDocs,
+  addDoc, deleteDoc, serverTimestamp, getDocs, deleteField,
 } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
@@ -290,6 +290,7 @@ export default function ModeratorScreen() {
   const [sponsorCategory, setSponsorCategory] = useState<SponsorCategory>('food');
   const [sponsorLink, setSponsorLink] = useState('');
   const [sponsorLinkType, setSponsorLinkType] = useState<SponsorLinkType>('website');
+  const [sponsorHasPromo, setSponsorHasPromo] = useState(false);
   const [sponsorPromoText, setSponsorPromoText] = useState('');
   const [sponsorPromoStartDate, setSponsorPromoStartDate] = useState<string | null>(null);
   const [sponsorPromoEndDate, setSponsorPromoEndDate] = useState<string | null>(null);
@@ -495,7 +496,8 @@ export default function ModeratorScreen() {
   const openNewSponsor = () => {
     setEditingSponsor(null);
     setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription('');
-    setSponsorCategory('food'); setSponsorLink(''); setSponsorLinkType('website'); setSponsorPromoText('');
+    setSponsorCategory('food'); setSponsorLink(''); setSponsorLinkType('website');
+    setSponsorHasPromo(false); setSponsorPromoText('');
     setSponsorPromoStartDate(null); setSponsorPromoEndDate(null);
     setSponsorImageUploading(false);
     setShowNewSponsor(true);
@@ -510,6 +512,7 @@ export default function ModeratorScreen() {
     setSponsorCategory(s.category ?? 'food');
     setSponsorLink(s.link ?? '');
     setSponsorLinkType(s.linkType ?? 'website');
+    setSponsorHasPromo(!!s.promoText);
     setSponsorPromoText(s.promoText ?? '');
     setSponsorPromoStartDate(s.promoStartDate ?? null);
     setSponsorPromoEndDate(s.promoEndDate ?? null);
@@ -521,19 +524,30 @@ export default function ModeratorScreen() {
     setEditingSponsor(null);
   };
 
-  const canSaveSponsor = !!(sponsorName.trim() && sponsorImageUrl.trim()) && !sponsorImageUploading;
+  // Once "Limited-time offer" is toggled on, all three fields are required
+  // to save — this is what prevents ending up with promo text but no
+  // dates (which silently never shows up anywhere, since isPromoLive
+  // requires all three).
+  const canSaveSponsor = !!(sponsorName.trim() && sponsorImageUrl.trim()) && !sponsorImageUploading &&
+    (!sponsorHasPromo || !!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate));
 
   const saveSponsor = async () => {
     if (!canSaveSponsor) return;
+    // deleteField() only works against an existing doc (updateDoc) — for a
+    // brand-new sponsor with the toggle off, there's nothing to clear, so
+    // the promo fields are just omitted entirely rather than "deleted".
+    const promoFields = sponsorHasPromo
+      ? { promoText: sponsorPromoText.trim(), promoStartDate: sponsorPromoStartDate, promoEndDate: sponsorPromoEndDate }
+      : editingSponsor
+      ? { promoText: deleteField(), promoStartDate: deleteField(), promoEndDate: deleteField() }
+      : {};
     const data = {
       name: sponsorName.trim(),
       imageUrl: sponsorImageUrl.trim(),
       category: sponsorCategory,
       ...(sponsorDescription.trim() ? { description: sponsorDescription.trim() } : {}),
       ...(sponsorLink.trim() ? { link: sponsorLink.trim(), linkType: sponsorLinkType } : {}),
-      ...(sponsorPromoText.trim() ? { promoText: sponsorPromoText.trim() } : {}),
-      ...(sponsorPromoStartDate ? { promoStartDate: sponsorPromoStartDate } : {}),
-      ...(sponsorPromoEndDate ? { promoEndDate: sponsorPromoEndDate } : {}),
+      ...promoFields,
     };
     if (editingSponsor) {
       await updateDoc(doc(db, 'sponsors', editingSponsor.id), data);
@@ -1280,24 +1294,36 @@ export default function ModeratorScreen() {
                 ))}
               </View>
 
-              <Text style={styles.manageSectionLabel}>Limited-time offer (optional)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. BOGO boba this weekend!"
-                placeholderTextColor={colors.textMuted}
-                value={sponsorPromoText}
-                onChangeText={setSponsorPromoText}
-              />
-              {sponsorPromoText.trim() ? (
-                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                  <View style={{ flex: 1 }}>
-                    <SimpleDateField label="Start date" value={sponsorPromoStartDate} onChange={setSponsorPromoStartDate} />
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>Limited-time offer</Text>
+                <Switch
+                  value={sponsorHasPromo}
+                  onValueChange={setSponsorHasPromo}
+                  trackColor={{ true: colors.red, false: colors.borderStrong }}
+                />
+              </View>
+              {sponsorHasPromo && (
+                <>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. BOGO boba this weekend! (required)"
+                    placeholderTextColor={colors.textMuted}
+                    value={sponsorPromoText}
+                    onChangeText={setSponsorPromoText}
+                  />
+                  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <SimpleDateField label="Start date (required)" value={sponsorPromoStartDate} onChange={setSponsorPromoStartDate} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <SimpleDateField label="End date (required)" value={sponsorPromoEndDate} onChange={setSponsorPromoEndDate} />
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <SimpleDateField label="End date" value={sponsorPromoEndDate} onChange={setSponsorPromoEndDate} />
-                  </View>
-                </View>
-              ) : null}
+                  {!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate) && (
+                    <Text style={styles.hint}>Fill in the offer text and both dates to save.</Text>
+                  )}
+                </>
+              )}
 
               <Pressable style={[styles.button, !canSaveSponsor && styles.buttonDisabled]} onPress={saveSponsor} disabled={!canSaveSponsor}>
                 <Text style={styles.buttonText}>{editingSponsor ? 'Save changes' : 'Add sponsor'}</Text>
