@@ -26,6 +26,16 @@ export function formatEventTimeRange(start?: string, end?: string, allDay?: bool
 const pad = (n: number) => String(n).padStart(2, '0');
 export const toDateString = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+// A sponsor's promo is "live" purely based on today falling within its
+// date range — no moderator toggle to remember, it just stops matching
+// once the range passes. All three fields have to be set: a promo with
+// text but no dates isn't schedulable, so it's treated as not live.
+export function isPromoLive(sponsor: { promoText?: string; promoStartDate?: string; promoEndDate?: string }): boolean {
+  if (!sponsor.promoText || !sponsor.promoStartDate || !sponsor.promoEndDate) return false;
+  const today = toDateString(new Date());
+  return today >= sponsor.promoStartDate && today <= sponsor.promoEndDate;
+}
+
 // Resolves a post's actual start/end instant. For an all-day post, `end`
 // is bumped to the end of that calendar day — the stored value is midnight
 // at the *start* of the end date, which would otherwise make an all-day

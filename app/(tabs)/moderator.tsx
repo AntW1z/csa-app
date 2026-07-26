@@ -8,9 +8,9 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
-import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorLinkType } from '../../src/types';
+import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorLinkType, SponsorCategory } from '../../src/types';
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
-import { formatEventTimeRange } from '../../src/utils';
+import { formatEventTimeRange, isPromoLive } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
 import ImagePickerField from '../../src/components/ImagePickerField';
 
@@ -209,6 +209,34 @@ function EventTimeRangeField({ onChange, initial }: { onChange: (range: TimeRang
   );
 }
 
+// A single date, no time component — used for a promo's start/end date.
+// Simpler than EventTimeRangeField since there's no time-slot layer and
+// each field only ever picks one specific day, not a range.
+function SimpleDateField({ label, value, onChange }: { label: string; value: string | null; onChange: (v: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const display = value
+    ? new Date(value + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+    : label;
+
+  return (
+    <View style={{ marginBottom: spacing.sm }}>
+      <Pressable style={styles.input} onPress={() => setExpanded((e) => !e)}>
+        <Text style={value ? styles.dateValue : styles.datePlaceholder}>{display}</Text>
+      </Pressable>
+      {expanded && (
+        <View style={styles.calendarWrap}>
+          <Calendar
+            current={value ?? undefined}
+            onDayPress={(day: DateData) => { onChange(day.dateString); setExpanded(false); }}
+            markedDates={value ? { [value]: { selected: true, selectedColor: colors.red } } : {}}
+            theme={{ todayTextColor: colors.red, arrowColor: colors.red, selectedDayBackgroundColor: colors.red }}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
 // This route is reachable by URL for anyone, but the tab is hidden for
 // non-moderators (see (tabs)/_layout.tsx). Enforce the real boundary with
 // Firestore security rules — see firestore.rules — never trust the UI alone.
@@ -259,10 +287,12 @@ export default function ModeratorScreen() {
   const [sponsorImageUrl, setSponsorImageUrl] = useState('');
   const [sponsorImageUploading, setSponsorImageUploading] = useState(false);
   const [sponsorDescription, setSponsorDescription] = useState('');
-  const [sponsorCategory, setSponsorCategory] = useState('');
+  const [sponsorCategory, setSponsorCategory] = useState<SponsorCategory>('food');
   const [sponsorLink, setSponsorLink] = useState('');
   const [sponsorLinkType, setSponsorLinkType] = useState<SponsorLinkType>('website');
   const [sponsorPromoText, setSponsorPromoText] = useState('');
+  const [sponsorPromoStartDate, setSponsorPromoStartDate] = useState<string | null>(null);
+  const [sponsorPromoEndDate, setSponsorPromoEndDate] = useState<string | null>(null);
 
   useEffect(() => {
     // Keyed on uid (not just mounted once) so a sign-out/sign-in cycle
@@ -465,7 +495,8 @@ export default function ModeratorScreen() {
   const openNewSponsor = () => {
     setEditingSponsor(null);
     setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription('');
-    setSponsorCategory(''); setSponsorLink(''); setSponsorLinkType('website'); setSponsorPromoText('');
+    setSponsorCategory('food'); setSponsorLink(''); setSponsorLinkType('website'); setSponsorPromoText('');
+    setSponsorPromoStartDate(null); setSponsorPromoEndDate(null);
     setSponsorImageUploading(false);
     setShowNewSponsor(true);
   };
@@ -476,10 +507,12 @@ export default function ModeratorScreen() {
     setSponsorImageUrl(s.imageUrl);
     setSponsorImageUploading(false);
     setSponsorDescription(s.description ?? '');
-    setSponsorCategory(s.category ?? '');
+    setSponsorCategory(s.category ?? 'food');
     setSponsorLink(s.link ?? '');
     setSponsorLinkType(s.linkType ?? 'website');
     setSponsorPromoText(s.promoText ?? '');
+    setSponsorPromoStartDate(s.promoStartDate ?? null);
+    setSponsorPromoEndDate(s.promoEndDate ?? null);
     setShowNewSponsor(true);
   };
 
@@ -495,10 +528,12 @@ export default function ModeratorScreen() {
     const data = {
       name: sponsorName.trim(),
       imageUrl: sponsorImageUrl.trim(),
+      category: sponsorCategory,
       ...(sponsorDescription.trim() ? { description: sponsorDescription.trim() } : {}),
-      ...(sponsorCategory.trim() ? { category: sponsorCategory.trim() } : {}),
       ...(sponsorLink.trim() ? { link: sponsorLink.trim(), linkType: sponsorLinkType } : {}),
       ...(sponsorPromoText.trim() ? { promoText: sponsorPromoText.trim() } : {}),
+      ...(sponsorPromoStartDate ? { promoStartDate: sponsorPromoStartDate } : {}),
+      ...(sponsorPromoEndDate ? { promoEndDate: sponsorPromoEndDate } : {}),
     };
     if (editingSponsor) {
       await updateDoc(doc(db, 'sponsors', editingSponsor.id), data);
@@ -515,22 +550,6 @@ export default function ModeratorScreen() {
     logAction(`Removed sponsor "${s.name}"`);
   };
 
-  // At most one sponsor is featured at a time — same pattern as posts'
-  // toggleFeatured, using the already-live `sponsors` list rather than an
-  // extra query. Featuring only matters if promoText is set too (see
-  // Sponsors screen), but the toggle itself doesn't require it, so a
-  // moderator can star one ahead of writing the promo text.
-  const toggleSponsorFeatured = async (s: Sponsor) => {
-    if (s.featured) {
-      await updateDoc(doc(db, 'sponsors', s.id), { featured: false });
-      logAction(`Unfeatured sponsor "${s.name}"`);
-      return;
-    }
-    const prevFeatured = sponsors.find((x) => x.featured && x.id !== s.id);
-    if (prevFeatured) await updateDoc(doc(db, 'sponsors', prevFeatured.id), { featured: false });
-    await updateDoc(doc(db, 'sponsors', s.id), { featured: true });
-    logAction(`Featured sponsor "${s.name}"`);
-  };
 
   const canPublish = !!(title.trim() && description.trim() && eventRange.start && eventRange.end) && !imageUploading;
 
@@ -1177,15 +1196,23 @@ export default function ModeratorScreen() {
                 <Ionicons name="add-circle-outline" size={18} color={colors.red} />
                 <Text style={styles.addBtnText}>New sponsor</Text>
               </Pressable>
-              <Text style={styles.hint}>Star one sponsor with promo text to feature it as the big banner at the top of the Sponsors tab.</Text>
+              <Text style={styles.hint}>
+                A limited-time offer (promo text + start/end dates) automatically appears at the top of
+                the Sponsors tab while today falls within that range, and disappears after — nothing to
+                remember to turn off. A standing/year-round deal just belongs in the description instead.
+              </Text>
               {sponsors.length === 0 && <Text style={styles.empty}>No sponsors yet.</Text>}
               {sponsors.map((s) => (
                 <View key={s.id} style={styles.carouselRow}>
-                  <Pressable onPress={() => toggleSponsorFeatured(s)} hitSlop={8}>
-                    <Ionicons name={s.featured ? 'star' : 'star-outline'} size={18} color={s.featured ? colors.amber : colors.textMuted} />
-                  </Pressable>
                   <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
-                  <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
+                    {isPromoLive(s) && (
+                      <View style={styles.roleTag}>
+                        <Text style={styles.roleTagText}>Live offer</Text>
+                      </View>
+                    )}
+                  </View>
                   <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
                     <Text style={styles.editText}>edit</Text>
                   </Pressable>
@@ -1209,8 +1236,30 @@ export default function ModeratorScreen() {
               <Text style={styles.header}>{editingSponsor ? 'Edit sponsor' : 'New sponsor'}</Text>
               <TextInput style={styles.input} placeholder="Sponsor name (required)" placeholderTextColor={colors.textMuted} value={sponsorName} onChangeText={setSponsorName} />
               <ImagePickerField folder="sponsors" value={sponsorImageUrl} onChange={setSponsorImageUrl} onUploadingChange={setSponsorImageUploading} />
-              <TextInput style={styles.input} placeholder="Category (optional, e.g. Boba, Restaurant)" placeholderTextColor={colors.textMuted} value={sponsorCategory} onChangeText={setSponsorCategory} />
-              <TextInput style={styles.input} placeholder="Description (optional)" placeholderTextColor={colors.textMuted} value={sponsorDescription} onChangeText={setSponsorDescription} multiline />
+
+              <Text style={styles.manageSectionLabel}>Category</Text>
+              <View style={styles.modeToggle}>
+                {(['food', 'services', 'other'] as SponsorCategory[]).map((c) => (
+                  <Pressable
+                    key={c}
+                    style={[styles.modeBtn, sponsorCategory === c && styles.modeBtnActive]}
+                    onPress={() => setSponsorCategory(c)}
+                  >
+                    <Text style={[styles.modeBtnText, sponsorCategory === c && styles.modeBtnTextActive]}>
+                      {c === 'food' ? 'Food' : c === 'services' ? 'Services' : 'Other'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <TextInput
+                style={[styles.input, { marginTop: spacing.sm }]}
+                placeholder="Description — services offered, why members should check them out, standing deals, etc."
+                placeholderTextColor={colors.textMuted}
+                value={sponsorDescription}
+                onChangeText={setSponsorDescription}
+                multiline
+              />
 
               <TextInput style={styles.input} placeholder="Link (optional)" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={sponsorLink} onChangeText={setSponsorLink} />
               <Text style={styles.hint}>
@@ -1231,13 +1280,24 @@ export default function ModeratorScreen() {
                 ))}
               </View>
 
+              <Text style={styles.manageSectionLabel}>Limited-time offer (optional)</Text>
               <TextInput
-                style={[styles.input, { marginTop: spacing.sm }]}
-                placeholder="Current promo (optional, e.g. 20% off this week!)"
+                style={styles.input}
+                placeholder="e.g. BOGO boba this weekend!"
                 placeholderTextColor={colors.textMuted}
                 value={sponsorPromoText}
                 onChangeText={setSponsorPromoText}
               />
+              {sponsorPromoText.trim() ? (
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <SimpleDateField label="Start date" value={sponsorPromoStartDate} onChange={setSponsorPromoStartDate} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <SimpleDateField label="End date" value={sponsorPromoEndDate} onChange={setSponsorPromoEndDate} />
+                  </View>
+                </View>
+              ) : null}
 
               <Pressable style={[styles.button, !canSaveSponsor && styles.buttonDisabled]} onPress={saveSponsor} disabled={!canSaveSponsor}>
                 <Text style={styles.buttonText}>{editingSponsor ? 'Save changes' : 'Add sponsor'}</Text>

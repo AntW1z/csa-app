@@ -116,24 +116,34 @@ export interface CarouselItem {
 // boba shop's ordering app link vs. a restaurant with no app, just a map).
 export type SponsorLinkType = 'website' | 'app' | 'directions';
 
-// A sponsor promo shown on the Sponsors tab — moderator-managed, same
+// A small fixed set rather than freeform text, so the Sponsors tab can
+// group sponsors into clean horizontally-scrolling rows per category
+// instead of accumulating one-off category strings over time.
+export type SponsorCategory = 'food' | 'services' | 'other';
+
+// A sponsor shown on the Sponsors tab — moderator-managed, same
 // public-read/moderator-write trust level as posts and the carousel.
 export interface Sponsor {
   id: string;
   name: string;
   imageUrl: string;
+  // Full writeup (services offered, why members should check them out,
+  // hours, standing/year-round deals, etc.) — shown in the sponsor's
+  // detail view. Sponsors get more room for this than events do, since
+  // most of what a sponsor listing needs to communicate *is* this.
   description?: string;
-  // Short tag shown as a pill on the card, e.g. "Boba", "Restaurant" —
-  // freeform text, not an enum, since sponsor types vary club to club.
-  category?: string;
+  category?: SponsorCategory;
   link?: string;
   linkType?: SponsorLinkType;
-  // A short-lived call-out ("20% off this week!") — separate from the
-  // evergreen `description` so one doesn't have to be rewritten to update
-  // the other. At most one sponsor is `featured` at a time (same pattern
-  // as Post.featured), which is what promotes it to the big banner at the
-  // top of the Sponsors tab.
+  // A time-boxed offer ("BOGO this weekend!"), separate from the
+  // evergreen `description` — a standing/year-round deal belongs in
+  // description instead, since it never needs to appear/disappear.
+  // promoStartDate/EndDate (YYYY-MM-DD) bound when this is actually live;
+  // computed client-side (see src/utils.ts isPromoLive), nothing
+  // automatically toggles it off — it just stops matching once the date
+  // range passes, no moderator action needed at either end.
   promoText?: string;
-  featured?: boolean;
+  promoStartDate?: string;
+  promoEndDate?: string;
   createdAt: any;
 }
