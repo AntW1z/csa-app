@@ -52,10 +52,6 @@ export interface Post {
   // At most one post is featured at a time — that's the one used as the
   // full-screen launch popup on Home. Moderators toggle this in Manage.
   featured?: boolean;
-  // Set by the scheduled Cloud Function (functions/src/eventReminders.ts)
-  // once it's sent the "starting soon" push for this event — prevents
-  // re-sending on the function's next run. Never set client-side.
-  reminderSent?: boolean;
   createdBy: string;
   createdAt: any;
 }
@@ -73,15 +69,24 @@ export interface LogEntry {
   createdAt: any;
 }
 
-// A push notification a moderator has drafted from the Manage dashboard,
-// independent of any post — sent on demand (see src/notifications.ts),
-// not automatically when an event is published.
+// A push notification a moderator has drafted from the Manage dashboard.
+// Either sent on demand (status 'draft' -> 'sent', see src/notifications.ts)
+// or, if linked to an event, automatically fired by the scheduled Cloud
+// Function (functions/src/eventReminders.ts) at eventDateTime minus
+// reminderMinutesBefore (status 'scheduled' -> 'sent'). eventDateTime is
+// denormalized from the linked post at schedule time so the function can
+// find due reminders with a single collection query, no per-message
+// lookup of its linked post needed.
 export interface PushMessage {
   id: string;
   title: string;
   body: string;
   audience: Visibility;
-  status: 'draft' | 'sent';
+  status: 'draft' | 'scheduled' | 'sent';
+  linkedPostId?: string;
+  linkedPostTitle?: string;
+  eventDateTime?: string;
+  reminderMinutesBefore?: number;
   sentAt?: any;
   createdBy: string;
   createdAt: any;
