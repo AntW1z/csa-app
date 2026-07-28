@@ -8,7 +8,6 @@
     "scheme": "csaapp",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.antwiz.csaapp",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
