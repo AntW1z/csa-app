@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CSA",
+    "name": "Georgia Tech CSA",
     "slug": "csa-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,9 +8,11 @@
     "scheme": "csaapp",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.antwiz.csaapp"
     },
     "android": {
+      "package": "com.antwiz.csaapp",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
