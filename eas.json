@@ -4,14 +4,27 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "base": {
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyC7uYvM7zy5S47u5U-zHSeOFAB9agHwnHk",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "csa-app-5130d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "csa-app-5130d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "csa-app-5130d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "710174751035",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:710174751035:web:b1fbd651fdeb5278725f1e"
+      }
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
       "distribution": "internal"
     },
     "preview": {
+      "extends": "base",
       "distribution": "internal"
     },
     "production": {
+      "extends": "base",
       "autoIncrement": true
     }
   },
