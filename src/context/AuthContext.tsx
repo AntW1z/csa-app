@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, doc, onSnapshot, orderBy, query, setDoc, serverTimestamp, where } from 'firebase/firestore';
@@ -15,6 +15,11 @@ interface AuthContextValue {
   // header badge and the inbox screen read from one listener instead of two.
   visibleNotifications: PushMessage[];
   unreadCount: number;
+  // Set to true right before deleting the profile doc as part of account
+  // deletion — without this, the listener below would see the doc
+  // disappear while the user is still momentarily authenticated and
+  // recreate a blank one, racing against (and undoing) the deletion.
+  skipAutoCreateProfile: React.MutableRefObject<boolean>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -23,6 +28,7 @@ const AuthContext = createContext<AuthContextValue>({
   loading: true,
   visibleNotifications: [],
   unreadCount: 0,
+  skipAutoCreateProfile: { current: false },
 });
 
 // Browsing the app never requires an account. This context only starts
@@ -32,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [sentNotifications, setSentNotifications] = useState<PushMessage[]>([]);
+  const skipAutoCreateProfile = useRef(false);
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
@@ -52,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (snap) => {
         if (snap.exists()) {
           setProfile(snap.data() as UserProfile);
-        } else {
+        } else if (!skipAutoCreateProfile.current) {
           // First sign-in: create their profile doc, defaulting to the
           // lowest-privilege role. Moderators/admins are promoted manually.
           const newProfile: UserProfile = {
@@ -104,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     : 0;
 
   return (
-    <AuthContext.Provider value={{ firebaseUser, profile, loading, visibleNotifications, unreadCount }}>
+    <AuthContext.Provider value={{ firebaseUser, profile, loading, visibleNotifications, unreadCount, skipAutoCreateProfile }}>
       {children}
     </AuthContext.Provider>
   );

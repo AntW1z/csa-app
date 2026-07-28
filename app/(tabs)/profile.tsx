@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { View, Text, TextInput, Pressable, Modal, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser,
+  reauthenticateWithCredential, EmailAuthProvider,
+} from 'firebase/auth';
+import { doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import { MembershipTerm } from '../../src/types';
@@ -11,7 +14,7 @@ import { colors, radius, spacing, shadow } from '../../src/theme';
 const termLabel = (term?: MembershipTerm) => (term === 'year' ? 'Full Year' : term === 'semester' ? 'Semester' : null);
 
 export default function ProfileScreen() {
-  const { firebaseUser, profile, loading } = useAuth();
+  const { firebaseUser, profile, loading, skipAutoCreateProfile } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -19,6 +22,10 @@ export default function ProfileScreen() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [showMemberInfo, setShowMemberInfo] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm' | 'reauth'>('idle');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   if (loading) return null;
 
@@ -81,6 +88,57 @@ export default function ProfileScreen() {
     if (!profile || !nameDraft.trim()) return;
     await updateDoc(doc(db, 'users', profile.uid), { displayName: nameDraft.trim() });
     setEditingName(false);
+  };
+
+  const closeDeleteFlow = () => {
+    setDeleteStep('idle');
+    setDeletePassword('');
+    setDeleteError('');
+    skipAutoCreateProfile.current = false;
+  };
+
+  // Firestore doc goes first, while still authenticated as this uid — once
+  // deleteUser() succeeds, auth.currentUser drops immediately and a
+  // self-scoped delete would no longer be permitted. skipAutoCreateProfile
+  // stops AuthContext's listener from recreating a blank profile in the
+  // moment between the doc disappearing and the auth account actually
+  // being gone (see src/context/AuthContext.tsx).
+  const performDelete = async () => {
+    if (!firebaseUser || !profile) return;
+    setDeleting(true);
+    setDeleteError('');
+    skipAutoCreateProfile.current = true;
+    try {
+      await deleteDoc(doc(db, 'users', profile.uid));
+      await deleteUser(firebaseUser);
+      // Success: onAuthStateChanged fires with null and resets everything.
+    } catch (err: any) {
+      if (err.code === 'auth/requires-recent-login') {
+        setDeleteStep('reauth');
+      } else {
+        setDeleteError(err.message ?? 'Something went wrong — try again.');
+        skipAutoCreateProfile.current = false;
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const reauthAndDelete = async () => {
+    if (!firebaseUser?.email) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const credential = EmailAuthProvider.credential(firebaseUser.email, deletePassword);
+      await reauthenticateWithCredential(firebaseUser, credential);
+      // The Firestore doc was already deleted in performDelete before it
+      // hit the recent-login error — just the auth account is left.
+      await deleteUser(firebaseUser);
+    } catch (err: any) {
+      setDeleteError(err.code === 'auth/invalid-credential' ? 'Incorrect password.' : (err.message ?? 'Something went wrong — try again.'));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const displayName = profile?.displayName ?? firebaseUser.email ?? '?';
@@ -154,6 +212,9 @@ export default function ProfileScreen() {
             <Ionicons name="log-out-outline" size={18} color={colors.red} />
             <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>
+          <Pressable style={styles.deleteAccountLink} onPress={() => setDeleteStep('confirm')} hitSlop={8}>
+            <Text style={styles.deleteAccountText}>Delete account</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -179,6 +240,69 @@ export default function ProfileScreen() {
             {isPending && <Text style={styles.pending}>Your request is pending review.</Text>}
             {isMemberOrAbove && (
               <Text style={styles.pending}>You're a {termLabel(profile?.membershipTerm) ?? 'current'} member.</Text>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={deleteStep !== 'idle'} transparent animationType="fade" onRequestClose={closeDeleteFlow}>
+        <Pressable style={styles.overlay} onPress={closeDeleteFlow}>
+          <Pressable style={styles.infoCard} onPress={(e) => e.stopPropagation()}>
+            <Pressable style={styles.closeBtn} onPress={closeDeleteFlow} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+
+            {deleteStep === 'confirm' && (
+              <>
+                <Text style={styles.infoTitle}>Delete your account?</Text>
+                <Text style={styles.infoBody}>
+                  This permanently deletes your profile and membership status. This cannot be undone.
+                </Text>
+                {deleteError ? <Text style={styles.error}>{deleteError}</Text> : null}
+                <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
+                  <Pressable
+                    style={[styles.dangerBtn, deleting && styles.buttonDisabled]}
+                    onPress={performDelete}
+                    disabled={deleting}
+                  >
+                    <Text style={styles.buttonText}>{deleting ? 'Deleting…' : 'Delete'}</Text>
+                  </Pressable>
+                  <Pressable style={styles.cancelBtn} onPress={closeDeleteFlow}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+
+            {deleteStep === 'reauth' && (
+              <>
+                <Text style={styles.infoTitle}>Confirm your password</Text>
+                <Text style={styles.infoBody}>
+                  For your security, deleting an account requires signing in again. Enter your password to finish.
+                </Text>
+                <TextInput
+                  style={[styles.input, { marginTop: spacing.md }]}
+                  placeholder="Password"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry
+                  value={deletePassword}
+                  onChangeText={setDeletePassword}
+                  autoFocus
+                />
+                {deleteError ? <Text style={styles.error}>{deleteError}</Text> : null}
+                <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+                  <Pressable
+                    style={[styles.dangerBtn, (deleting || !deletePassword) && styles.buttonDisabled]}
+                    onPress={reauthAndDelete}
+                    disabled={deleting || !deletePassword}
+                  >
+                    <Text style={styles.buttonText}>{deleting ? 'Deleting…' : 'Confirm & delete'}</Text>
+                  </Pressable>
+                  <Pressable style={styles.cancelBtn} onPress={closeDeleteFlow}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </>
             )}
           </Pressable>
         </Pressable>
@@ -260,6 +384,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   signOutText: { color: colors.red, fontWeight: '700', fontSize: 14 },
+  deleteAccountLink: { alignItems: 'center', marginTop: spacing.md },
+  deleteAccountText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  dangerBtn: { flex: 1, backgroundColor: colors.red, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
+  cancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
+  cancelText: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
+  buttonDisabled: { opacity: 0.5 },
   overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.xl },
   infoCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, ...shadow.card },
   closeBtn: { alignSelf: 'flex-end', marginBottom: spacing.xs },

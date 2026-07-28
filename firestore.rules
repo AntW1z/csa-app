@@ -17,7 +17,9 @@ service cloud.firestore {
     // Anyone signed in can read profiles (needed to show pending requests
     // to moderators). Users can create their own doc on first sign-in and
     // edit their own fields, but cannot change their own role — only a
-    // moderator/admin write can do that.
+    // moderator/admin write can do that. Self-delete only, for account
+    // deletion (App Store Guideline 5.1.1(v) requires this be possible
+    // in-app) — see app/(tabs)/profile.tsx.
     match /users/{uid} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.auth.uid == uid;
@@ -25,6 +27,7 @@ service cloud.firestore {
         (request.auth.uid == uid && request.resource.data.role == resource.data.role) ||
         isModerator()
       );
+      allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
     // Posts are public to read (no login needed to browse), but only
