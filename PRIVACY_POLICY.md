@@ -90,4 +90,4 @@ after changes are posted constitutes acceptance of the updated policy.
 ## Contact Us
 
 If you have questions about this policy or your data, contact us at:
-**[YOUR CONTACT EMAIL]**
+**awang2038@gmail.com**
