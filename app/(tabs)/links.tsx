@@ -2,12 +2,10 @@ import { View, Text, Pressable, Linking, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 
-// Edit these to your club's real links.
 const LINKS: { label: string; url: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { label: 'Instagram', url: 'https://instagram.com/your_csa', icon: 'logo-instagram' },
-  { label: 'Discord', url: 'https://discord.gg/your_invite', icon: 'logo-discord' },
-  { label: 'GroupMe', url: 'https://groupme.com/join_group/your_id', icon: 'chatbubbles-outline' },
-  { label: 'Website', url: 'https://your-csa-site.com', icon: 'globe-outline' },
+  { label: 'Instagram', url: 'https://www.instagram.com/gt_csa/', icon: 'logo-instagram' },
+  { label: 'Discord', url: 'https://discord.com/invite/fWYqxA7kS4', icon: 'logo-discord' },
+  { label: 'Linktree', url: 'https://linktr.ee/gtcsa', icon: 'link-outline' },
 ];
 
 export default function LinksScreen() {
