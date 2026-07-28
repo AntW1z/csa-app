@@ -479,17 +479,22 @@ export default function ModeratorScreen() {
       .map((d) => d.data() as UserProfile)
       .filter((u) => u.pushToken && (sendingNotif.audience === 'everyone' || u.role !== 'user'))
       .map((u) => ({ uid: u.uid, token: u.pushToken as string }));
-    const reached = await sendPushToTokens(recipients, sendingNotif.title, sendingNotif.body);
+    const { attempted, receiptErrors } = await sendPushToTokens(recipients, sendingNotif.title, sendingNotif.body);
     await updateDoc(doc(db, 'notifications', sendingNotif.id), { status: 'sent', sentAt: serverTimestamp() });
-    logAction(`Sent notification "${sendingNotif.title}" to ${sendingNotif.audience === 'everyone' ? 'everyone' : 'members'} (${reached} device${reached === 1 ? '' : 's'})`);
+    logAction(`Sent notification "${sendingNotif.title}" to ${sendingNotif.audience === 'everyone' ? 'everyone' : 'members'} (${attempted} device${attempted === 1 ? '' : 's'}${receiptErrors.length ? `, ${receiptErrors.length} failed` : ''})`);
     setSendingNotif(null);
-    if (!reached) {
+    if (!attempted) {
       Alert.alert(
         'Sent to 0 devices',
         'No one has push notifications registered yet. This usually means the app isn’t linked to an EAS project (run `eas login` and `eas init`), or no one has granted notification permission on a build that supports it.'
       );
+    } else if (receiptErrors.length > 0) {
+      Alert.alert(
+        'Delivery failed',
+        `Expo accepted the request for ${attempted} device${attempted === 1 ? '' : 's'}, but Apple/Google rejected actual delivery:\n\n${receiptErrors.join('\n')}`
+      );
     } else {
-      Alert.alert('Sent', `Delivered to ${reached} device${reached === 1 ? '' : 's'}.`);
+      Alert.alert('Sent', `Delivered to ${attempted} device${attempted === 1 ? '' : 's'}.`);
     }
   };
 
