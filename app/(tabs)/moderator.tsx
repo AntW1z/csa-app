@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, FlatList, ScrollView, StyleSheet, Switch, Image, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, ScrollView, StyleSheet, Switch, Image } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -472,29 +472,33 @@ export default function ModeratorScreen() {
   // every registered user, "members" skips role === 'user' (people who
   // haven't joined) even if they'd granted notification permission before
   // requesting membership.
+  // Logs (Manage > Logs) rather than a timed Alert popup is the source of
+  // truth for delivery outcome — on a standalone build there's no console
+  // to check, and an Alert requires catching an ~8s window at the right
+  // moment. Wrapped in try/catch so a failure anywhere in this flow (e.g.
+  // the receipts fetch) still gets recorded instead of failing silently.
   const confirmSendNotif = async () => {
     if (!sendingNotif) return;
-    const snap = await getDocs(collection(db, 'users'));
-    const recipients = snap.docs
-      .map((d) => d.data() as UserProfile)
-      .filter((u) => u.pushToken && (sendingNotif.audience === 'everyone' || u.role !== 'user'))
-      .map((u) => ({ uid: u.uid, token: u.pushToken as string }));
-    const { attempted, receiptErrors } = await sendPushToTokens(recipients, sendingNotif.title, sendingNotif.body);
-    await updateDoc(doc(db, 'notifications', sendingNotif.id), { status: 'sent', sentAt: serverTimestamp() });
-    logAction(`Sent notification "${sendingNotif.title}" to ${sendingNotif.audience === 'everyone' ? 'everyone' : 'members'} (${attempted} device${attempted === 1 ? '' : 's'}${receiptErrors.length ? `, ${receiptErrors.length} failed` : ''})`);
+    const notif = sendingNotif;
     setSendingNotif(null);
-    if (!attempted) {
-      Alert.alert(
-        'Sent to 0 devices',
-        'No one has push notifications registered yet. This usually means the app isn’t linked to an EAS project (run `eas login` and `eas init`), or no one has granted notification permission on a build that supports it.'
-      );
-    } else if (receiptErrors.length > 0) {
-      Alert.alert(
-        'Delivery failed',
-        `Expo accepted the request for ${attempted} device${attempted === 1 ? '' : 's'}, but Apple/Google rejected actual delivery:\n\n${receiptErrors.join('\n')}`
-      );
-    } else {
-      Alert.alert('Sent', `Delivered to ${attempted} device${attempted === 1 ? '' : 's'}.`);
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      const recipients = snap.docs
+        .map((d) => d.data() as UserProfile)
+        .filter((u) => u.pushToken && (notif.audience === 'everyone' || u.role !== 'user'))
+        .map((u) => ({ uid: u.uid, token: u.pushToken as string }));
+      const { attempted, receiptErrors } = await sendPushToTokens(recipients, notif.title, notif.body);
+      await updateDoc(doc(db, 'notifications', notif.id), { status: 'sent', sentAt: serverTimestamp() });
+
+      if (!attempted) {
+        logAction(`Sent "${notif.title}" — reached 0 devices (no one has push notifications registered)`);
+      } else if (receiptErrors.length > 0) {
+        logAction(`Sent "${notif.title}" to ${attempted} device${attempted === 1 ? '' : 's'} — ${receiptErrors.length} failed: ${receiptErrors.join('; ')}`);
+      } else {
+        logAction(`Sent "${notif.title}" to ${notif.audience === 'everyone' ? 'everyone' : 'members'} — delivered to ${attempted} device${attempted === 1 ? '' : 's'}`);
+      }
+    } catch (err: any) {
+      logAction(`Failed to send "${notif.title}": ${err?.message ?? String(err)}`);
     }
   };
 
