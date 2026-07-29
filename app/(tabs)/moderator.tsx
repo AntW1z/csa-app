@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, ReactNode } from 'react';
 import { View, Text, TextInput, Pressable, FlatList, ScrollView, StyleSheet, Switch, Image, Platform } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
@@ -296,6 +296,8 @@ export default function ModeratorScreen() {
   const [sponsorPromoEndDate, setSponsorPromoEndDate] = useState<string | null>(null);
   const [sponsorKind, setSponsorKind] = useState<SponsorKind>('information');
   const [sponsorEventDate, setSponsorEventDate] = useState<string | null>(null);
+  const [sponsorEventEndDate, setSponsorEventEndDate] = useState<string | null>(null);
+  const [sponsorEventIsRange, setSponsorEventIsRange] = useState(false);
   const [sponsorLinkedSponsorId, setSponsorLinkedSponsorId] = useState<string | null>(null);
   const [showLinkedSponsorPicker, setShowLinkedSponsorPicker] = useState(false);
 
@@ -511,28 +513,93 @@ export default function ModeratorScreen() {
   const resolveSponsorKind = (s: Sponsor): SponsorKind => (s.kind === 'event' ? 'event' : 'information');
 
   const informationSponsors = sponsors.filter((s) => resolveSponsorKind(s) === 'information');
-  const sortedSponsors = sortByOrder(sponsors);
 
-  // One shared order space across every sponsor/event — the public Sponsors
-  // tab splits them into separate rows (offers, events, per-category), but
-  // filtering a sorted list into a subset keeps the relative order, so
-  // dragging here is enough to control ordering within each of those rows.
-  const reorderSponsors = async (data: Sponsor[]) => {
-    setSponsors(data);
+  // Manage's list groups each event under the sponsor it's linked to (like
+  // nested bullet points) instead of one flat jumbled list — top level is
+  // every information sponsor plus any event with no link, and each
+  // sponsor's linked events are its children. `order` is only ever
+  // compared within a group (see reorderGroup), so top-level items and
+  // children can freely share the same order values without colliding.
+  const topLevelSponsors = sortByOrder(
+    sponsors.filter((s) => resolveSponsorKind(s) === 'information' || !s.linkedSponsorId)
+  );
+  const childrenOf = (sponsorId: string) =>
+    sortByOrder(sponsors.filter((s) => resolveSponsorKind(s) === 'event' && s.linkedSponsorId === sponsorId));
+
+  const applyOrderUpdates = async (updates: Map<string, number>) => {
+    setSponsors((prev) => prev.map((s) => (updates.has(s.id) ? { ...s, order: updates.get(s.id) } : s)));
     const batch = writeBatch(db);
-    data.forEach((s, index) => batch.update(doc(db, 'sponsors', s.id), { order: index }));
+    updates.forEach((order, id) => batch.update(doc(db, 'sponsors', id), { order }));
     await batch.commit();
   };
 
+  const reorderGroup = (data: Sponsor[]) => applyOrderUpdates(new Map(data.map((s, i) => [s.id, i])));
+
   // react-native-draggable-flatlist relies on findNodeHandle, which isn't
-  // supported on web — so web gets up/down buttons instead of drag handles.
-  const moveSponsor = (index: number, direction: -1 | 1) => {
-    const data = [...sortedSponsors];
+  // supported on web — so web (and every child row, on any platform, to
+  // avoid nesting a draggable list inside another one) gets up/down
+  // buttons instead of a drag handle.
+  const moveInGroup = (group: Sponsor[], index: number, direction: -1 | 1) => {
     const target = index + direction;
-    if (target < 0 || target >= data.length) return;
+    if (target < 0 || target >= group.length) return;
+    const data = [...group];
     [data[index], data[target]] = [data[target], data[index]];
-    reorderSponsors(data);
+    reorderGroup(data);
   };
+
+  const renderReorderArrows = (onUp: () => void, onDown: () => void, canUp: boolean, canDown: boolean) => (
+    <View style={styles.reorderArrows}>
+      <Pressable onPress={onUp} disabled={!canUp} hitSlop={4}>
+        <Ionicons name="chevron-up" size={16} color={canUp ? colors.textMuted : colors.borderStrong} />
+      </Pressable>
+      <Pressable onPress={onDown} disabled={!canDown} hitSlop={4}>
+        <Ionicons name="chevron-down" size={16} color={canDown ? colors.textMuted : colors.borderStrong} />
+      </Pressable>
+    </View>
+  );
+
+  const renderSponsorRow = (s: Sponsor, leadingControl: ReactNode, isActive?: boolean, indent?: boolean) => (
+    <View style={[styles.carouselRow, indent && styles.sponsorChildRow, isActive && styles.carouselRowDragging]}>
+      {leadingControl}
+      <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
+        <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+          <View style={styles.roleTag}>
+            <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
+          </View>
+          {isPromoLive(s) && (
+            <View style={styles.roleTag}>
+              <Text style={styles.roleTagText}>Live offer</Text>
+            </View>
+          )}
+        </View>
+      </View>
+      <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
+        <Text style={styles.editText}>edit</Text>
+      </Pressable>
+      <Pressable onPress={() => deleteSponsor(s)} hitSlop={8}>
+        <Text style={styles.deleteText}>delete</Text>
+      </Pressable>
+    </View>
+  );
+
+  const renderSponsorChildren = (children: Sponsor[]) =>
+    children.map((child, ci) => (
+      <View key={child.id}>
+        {renderSponsorRow(
+          child,
+          renderReorderArrows(
+            () => moveInGroup(children, ci, -1),
+            () => moveInGroup(children, ci, 1),
+            ci > 0,
+            ci < children.length - 1
+          ),
+          false,
+          true
+        )}
+      </View>
+    ));
 
   const openNewSponsor = (kind: SponsorKind) => {
     setEditingSponsor(null);
@@ -541,7 +608,8 @@ export default function ModeratorScreen() {
     setSponsorCategory('food'); setSponsorLinks([{ label: '', url: '' }]);
     setSponsorHasPromo(false); setSponsorPromoText('');
     setSponsorPromoStartDate(null); setSponsorPromoEndDate(null);
-    setSponsorEventDate(null); setSponsorLinkedSponsorId(null);
+    setSponsorEventDate(null); setSponsorEventEndDate(null); setSponsorEventIsRange(false);
+    setSponsorLinkedSponsorId(null);
     setSponsorImageUploading(false);
     setShowNewSponsor(true);
   };
@@ -560,6 +628,8 @@ export default function ModeratorScreen() {
     setSponsorPromoStartDate(s.promoStartDate ?? null);
     setSponsorPromoEndDate(s.promoEndDate ?? null);
     setSponsorEventDate(s.eventDate ?? null);
+    setSponsorEventEndDate(s.eventEndDate ?? null);
+    setSponsorEventIsRange(!!s.eventEndDate);
     setSponsorLinkedSponsorId(s.linkedSponsorId ?? null);
     setShowNewSponsor(true);
   };
@@ -583,7 +653,8 @@ export default function ModeratorScreen() {
   // requires all three). Event-kind sponsors skip promo validation
   // entirely, since that's an information-kind-only concept.
   const canSaveSponsor = !!(sponsorName.trim() && sponsorImageUrl.trim()) && !sponsorImageUploading &&
-    (sponsorKind === 'event' || !sponsorHasPromo || !!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate));
+    (sponsorKind === 'event' || !sponsorHasPromo || !!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate)) &&
+    (sponsorKind === 'information' || !sponsorEventIsRange || !!sponsorEventEndDate);
 
   const saveSponsor = async () => {
     if (!canSaveSponsor) return;
@@ -601,6 +672,11 @@ export default function ModeratorScreen() {
     if (sponsorKind === 'event') {
       kindFields = {
         ...(sponsorEventDate ? { eventDate: sponsorEventDate } : {}),
+        ...(sponsorEventIsRange && sponsorEventEndDate
+          ? { eventEndDate: sponsorEventEndDate }
+          : editingSponsor
+          ? { eventEndDate: deleteField() }
+          : {}),
         ...(sponsorLinkedSponsorId
           ? { linkedSponsorId: sponsorLinkedSponsorId }
           : editingSponsor
@@ -1371,68 +1447,35 @@ export default function ModeratorScreen() {
               </Text>
               {sponsors.length === 0 && <Text style={styles.empty}>No sponsors yet.</Text>}
               {Platform.OS === 'web'
-                ? sortedSponsors.map((s, index) => (
-                    <View key={s.id} style={styles.carouselRow}>
-                      <View style={styles.reorderArrows}>
-                        <Pressable onPress={() => moveSponsor(index, -1)} disabled={index === 0} hitSlop={4}>
-                          <Ionicons name="chevron-up" size={16} color={index === 0 ? colors.borderStrong : colors.textMuted} />
-                        </Pressable>
-                        <Pressable onPress={() => moveSponsor(index, 1)} disabled={index === sortedSponsors.length - 1} hitSlop={4}>
-                          <Ionicons name="chevron-down" size={16} color={index === sortedSponsors.length - 1 ? colors.borderStrong : colors.textMuted} />
-                        </Pressable>
-                      </View>
-                      <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
-                        <View style={{ flexDirection: 'row', gap: spacing.xs }}>
-                          <View style={styles.roleTag}>
-                            <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
-                          </View>
-                          {isPromoLive(s) && (
-                            <View style={styles.roleTag}>
-                              <Text style={styles.roleTagText}>Live offer</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                      <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
-                        <Text style={styles.editText}>edit</Text>
-                      </Pressable>
-                      <Pressable onPress={() => deleteSponsor(s)} hitSlop={8}>
-                        <Text style={styles.deleteText}>delete</Text>
-                      </Pressable>
+                ? topLevelSponsors.map((s, index) => (
+                    <View key={s.id}>
+                      {renderSponsorRow(
+                        s,
+                        renderReorderArrows(
+                          () => moveInGroup(topLevelSponsors, index, -1),
+                          () => moveInGroup(topLevelSponsors, index, 1),
+                          index > 0,
+                          index < topLevelSponsors.length - 1
+                        )
+                      )}
+                      {resolveSponsorKind(s) === 'information' && renderSponsorChildren(childrenOf(s.id))}
                     </View>
                   ))
                 : (
                   <NestableDraggableFlatList
-                    data={sortedSponsors}
+                    data={topLevelSponsors}
                     keyExtractor={(s) => s.id}
-                    onDragEnd={({ data }) => reorderSponsors(data)}
+                    onDragEnd={({ data }) => reorderGroup(data)}
                     renderItem={({ item: s, drag, isActive }: RenderItemParams<Sponsor>) => (
-                      <View style={[styles.carouselRow, isActive && styles.carouselRowDragging]}>
-                        <Pressable onPressIn={drag} hitSlop={8}>
-                          <Ionicons name="reorder-three" size={22} color={colors.textMuted} />
-                        </Pressable>
-                        <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
-                          <View style={{ flexDirection: 'row', gap: spacing.xs }}>
-                            <View style={styles.roleTag}>
-                              <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
-                            </View>
-                            {isPromoLive(s) && (
-                              <View style={styles.roleTag}>
-                                <Text style={styles.roleTagText}>Live offer</Text>
-                              </View>
-                            )}
-                          </View>
-                        </View>
-                        <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
-                          <Text style={styles.editText}>edit</Text>
-                        </Pressable>
-                        <Pressable onPress={() => deleteSponsor(s)} hitSlop={8}>
-                          <Text style={styles.deleteText}>delete</Text>
-                        </Pressable>
+                      <View>
+                        {renderSponsorRow(
+                          s,
+                          <Pressable onPressIn={drag} hitSlop={8}>
+                            <Ionicons name="reorder-three" size={22} color={colors.textMuted} />
+                          </Pressable>,
+                          isActive
+                        )}
+                        {resolveSponsorKind(s) === 'information' && renderSponsorChildren(childrenOf(s.id))}
                       </View>
                     )}
                   />
@@ -1562,7 +1605,25 @@ export default function ModeratorScreen() {
                   />
 
                   <Text style={styles.manageSectionLabel}>Date</Text>
-                  <SimpleDateField label="Event date" value={sponsorEventDate} onChange={setSponsorEventDate} />
+                  <SimpleDateField
+                    label={sponsorEventIsRange ? 'Start date' : 'Event date'}
+                    value={sponsorEventDate}
+                    onChange={setSponsorEventDate}
+                  />
+                  <View style={styles.row}>
+                    <Text style={styles.rowLabel}>Runs over multiple days</Text>
+                    <Switch
+                      value={sponsorEventIsRange}
+                      onValueChange={(v) => { setSponsorEventIsRange(v); if (!v) setSponsorEventEndDate(null); }}
+                      trackColor={{ true: colors.red, false: colors.borderStrong }}
+                    />
+                  </View>
+                  {sponsorEventIsRange && (
+                    <>
+                      <SimpleDateField label="End date (required)" value={sponsorEventEndDate} onChange={setSponsorEventEndDate} />
+                      {!sponsorEventEndDate && <Text style={styles.hint}>Pick an end date to save.</Text>}
+                    </>
+                  )}
 
                   <Text style={styles.manageSectionLabel}>Sponsor (optional)</Text>
                   <Text style={styles.hint}>
@@ -2005,6 +2066,12 @@ const styles = StyleSheet.create({
   },
   carouselRowDragging: { opacity: 0.7 },
   reorderArrows: { justifyContent: 'center', gap: 2 },
+  sponsorChildRow: {
+    marginLeft: spacing.lg,
+    paddingLeft: spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.borderStrong,
+  },
   carouselThumb: { width: 44, height: 44, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
   carouselLink: { flex: 1, fontSize: 12, color: colors.textSecondary },
   modeToggle: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, marginBottom: spacing.md },

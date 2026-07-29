@@ -33,6 +33,15 @@ const formatEventDate = (d?: string) => {
   return new Date(y, m - 1, day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
+// `end` is only ever set when the event actually spans multiple days (see
+// the "runs over multiple days" toggle in Manage) — a single-day event
+// just shows its one date.
+const formatEventDateRange = (start?: string, end?: string) => {
+  if (!start) return '';
+  if (!end || end === start) return formatEventDate(start);
+  return `${formatEventDate(start)} – ${formatEventDate(end)}`;
+};
+
 export default function SponsorsScreen() {
   const [sponsors, setSponsors] = useState<Sponsor[]>([]);
   const [selected, setSelected] = useState<Sponsor | null>(null);
@@ -80,7 +89,7 @@ export default function SponsorsScreen() {
                 <Pressable key={s.id} style={styles.banner} onPress={() => setSelected(s)}>
                   <Image source={{ uri: s.imageUrl }} style={styles.bannerImage} resizeMode="cover" />
                   <View style={styles.bannerOverlay}>
-                    {s.eventDate ? <Text style={styles.bannerPromo} numberOfLines={1}>{formatEventDate(s.eventDate)}</Text> : null}
+                    {s.eventDate ? <Text style={styles.bannerPromo} numberOfLines={1}>{formatEventDateRange(s.eventDate, s.eventEndDate)}</Text> : null}
                     <Text style={styles.bannerName}>{s.name}</Text>
                   </View>
                 </Pressable>
@@ -144,7 +153,7 @@ export default function SponsorsScreen() {
                 ) : (
                   selected.eventDate && (
                     <View style={styles.categoryPill}>
-                      <Text style={styles.categoryPillText}>{formatEventDate(selected.eventDate)}</Text>
+                      <Text style={styles.categoryPillText}>{formatEventDateRange(selected.eventDate, selected.eventEndDate)}</Text>
                     </View>
                   )
                 )}

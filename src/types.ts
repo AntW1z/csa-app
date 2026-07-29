@@ -169,6 +169,11 @@ export interface Sponsor {
   promoEndDate?: string;
   // 'event' kind only:
   eventDate?: string;
+  // Optional — when set, the event spans a period (eventDate through
+  // eventEndDate) rather than a single day. Left unset for a one-day
+  // event, so nothing has to change for events created before this
+  // existed.
+  eventEndDate?: string;
   // References another Sponsor doc (an 'information'-kind one) — shown as
   // a small tappable brand row on the event's detail view, jumping
   // straight to that sponsor's own page.
