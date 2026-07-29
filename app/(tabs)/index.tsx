@@ -30,6 +30,7 @@ export default function Home() {
   const router = useRouter();
   const { profile } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
+  const [postsById, setPostsById] = useState<Record<string, Post>>({});
   const [carousel, setCarousel] = useState<CarouselItem[]>([]);
   const [featuredPost, setFeaturedPost] = useState<Post | null>(null);
   const [showAd, setShowAd] = useState(false);
@@ -49,6 +50,10 @@ export default function Home() {
         .filter((p) => (p.visibility === 'everyone' || isMemberOrAbove) && isUpcomingThisWeek(p, now))
         .sort((a, b) => new Date(a.dateTime ?? 0).getTime() - new Date(b.dateTime ?? 0).getTime());
       setPosts(upcoming);
+      // Keyed by id so a post-linked carousel item can always show that
+      // post's *current* image (see resolvedCarousel below) instead of the
+      // snapshot copy saved on the carousel item at link time.
+      setPostsById(Object.fromEntries(all.map((p) => [p.id, p])));
     });
     return unsub;
   }, [isMemberOrAbove]);
@@ -86,10 +91,18 @@ export default function Home() {
     }
   };
 
+  // A post-linked carousel item should always reflect that post's current
+  // image, not the copy saved on the carousel item back when it was linked
+  // — otherwise editing a post's image after adding it to the carousel
+  // silently leaves the old picture rotating on Home.
+  const resolvedCarousel = carousel.map((item) =>
+    item.postId && postsById[item.postId] ? { ...item, imageUrl: postsById[item.postId].imageUrl ?? item.imageUrl } : item
+  );
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <PromoCarousel items={carousel} onPressItem={handleCarouselPress} />
+        <PromoCarousel items={resolvedCarousel} onPressItem={handleCarouselPress} />
         <View style={styles.body}>
           <View style={styles.quickActions}>
             <Pressable style={styles.quickAction} onPress={() => router.push('/calendar')}>

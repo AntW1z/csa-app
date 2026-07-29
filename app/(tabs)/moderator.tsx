@@ -911,7 +911,7 @@ export default function ModeratorScreen() {
                 const linkedPost = item.postId ? posts.find((p) => p.id === item.postId) : null;
                 return (
                   <View key={item.id} style={styles.carouselRow}>
-                    <Image source={{ uri: item.imageUrl }} style={styles.carouselThumb} />
+                    <Image source={{ uri: linkedPost?.imageUrl ?? item.imageUrl }} style={styles.carouselThumb} />
                     <Text style={styles.carouselLink} numberOfLines={1}>
                       {item.postId ? `Event: ${linkedPost?.title ?? '(deleted post)'}` : 'Image'}
                     </Text>
