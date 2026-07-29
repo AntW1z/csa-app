@@ -5,7 +5,7 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { Sponsor, SponsorCategory, SponsorKind } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
-import { isPromoLive } from '../../src/utils';
+import { isPromoLive, sortByOrder } from '../../src/utils';
 
 const ROW_CARD_WIDTH = 150;
 
@@ -42,8 +42,9 @@ export default function SponsorsScreen() {
     return onSnapshot(q, (snap) => setSponsors(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sponsor))));
   }, []);
 
-  const informationSponsors = sponsors.filter((s) => resolveSponsorKind(s) === 'information');
-  const events = sponsors.filter((s) => resolveSponsorKind(s) === 'event');
+  const sorted = sortByOrder(sponsors);
+  const informationSponsors = sorted.filter((s) => resolveSponsorKind(s) === 'information');
+  const events = sorted.filter((s) => resolveSponsorKind(s) === 'event');
 
   const liveOffers = informationSponsors.filter(isPromoLive);
   // While a sponsor's deal is live, they're already shown in the offers
@@ -71,6 +72,23 @@ export default function SponsorsScreen() {
 
         {sponsors.length === 0 && <Text style={styles.empty}>No sponsors yet — check back soon!</Text>}
 
+        {events.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Sponsor events</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowContent}>
+              {events.map((s) => (
+                <Pressable key={s.id} style={styles.banner} onPress={() => setSelected(s)}>
+                  <Image source={{ uri: s.imageUrl }} style={styles.bannerImage} resizeMode="cover" />
+                  <View style={styles.bannerOverlay}>
+                    {s.eventDate ? <Text style={styles.bannerPromo} numberOfLines={1}>{formatEventDate(s.eventDate)}</Text> : null}
+                    <Text style={styles.bannerName}>{s.name}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         {liveOffers.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Limited-time offers</Text>
@@ -82,23 +100,6 @@ export default function SponsorsScreen() {
                     <Text style={styles.bannerPromo} numberOfLines={2}>{s.promoText}</Text>
                     <Text style={styles.bannerName}>{s.name}</Text>
                   </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {events.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Sponsor events</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowContent}>
-              {events.map((s) => (
-                <Pressable key={s.id} style={styles.card} onPress={() => setSelected(s)}>
-                  <View style={styles.cardImageWrap}>
-                    <Image source={{ uri: s.imageUrl }} style={styles.cardImage} resizeMode="cover" />
-                  </View>
-                  <Text style={styles.name} numberOfLines={1}>{s.name}</Text>
-                  {s.eventDate ? <Text style={styles.cardSubtext}>{formatEventDate(s.eventDate)}</Text> : null}
                 </Pressable>
               ))}
             </ScrollView>

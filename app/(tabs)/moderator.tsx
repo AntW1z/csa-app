@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, FlatList, ScrollView, StyleSheet, Switch, Image } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
+import { NestableScrollContainer, NestableDraggableFlatList, RenderItemParams } from 'react-native-draggable-flatlist';
 import {
   collection, onSnapshot, query, where, orderBy, doc, updateDoc,
-  addDoc, deleteDoc, serverTimestamp, getDocs, deleteField,
+  addDoc, deleteDoc, serverTimestamp, getDocs, deleteField, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorCategory, SponsorKind } from '../../src/types';
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
-import { formatEventTimeRange, isPromoLive } from '../../src/utils';
+import { formatEventTimeRange, isPromoLive, sortByOrder } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
 import ImagePickerField from '../../src/components/ImagePickerField';
 
@@ -510,6 +511,18 @@ export default function ModeratorScreen() {
   const resolveSponsorKind = (s: Sponsor): SponsorKind => (s.kind === 'event' ? 'event' : 'information');
 
   const informationSponsors = sponsors.filter((s) => resolveSponsorKind(s) === 'information');
+  const sortedSponsors = sortByOrder(sponsors);
+
+  // One shared order space across every sponsor/event — the public Sponsors
+  // tab splits them into separate rows (offers, events, per-category), but
+  // filtering a sorted list into a subset keeps the relative order, so
+  // dragging here is enough to control ordering within each of those rows.
+  const reorderSponsors = async (data: Sponsor[]) => {
+    setSponsors(data);
+    const batch = writeBatch(db);
+    data.forEach((s, index) => batch.update(doc(db, 'sponsors', s.id), { order: index }));
+    await batch.commit();
+  };
 
   const openNewSponsor = (kind: SponsorKind) => {
     setEditingSponsor(null);
@@ -701,14 +714,29 @@ export default function ModeratorScreen() {
   // The easy path for moderators who don't want to type a link: pick an
   // existing post and its image + tap-to-open-detail both come along
   // automatically (see Home's handleCarouselPress, which resolves postId).
+  // Guards against a double-tap (or tapping a post that's already in the
+  // rotation) adding the same event twice.
   const addCarouselFromPost = async (post: Post) => {
     if (!post.imageUrl) return;
+    if (carousel.some((item) => item.postId === post.id)) return;
     await addDoc(collection(db, 'carouselItems'), {
       imageUrl: post.imageUrl,
       postId: post.id,
       createdAt: serverTimestamp(),
     });
     logAction(`Added event "${post.title}" to the home carousel`);
+  };
+
+  const sortedCarousel = sortByOrder(carousel);
+
+  // Persists a new drag order as sequential integers — this is also what
+  // backfills `order` onto any items that never had one (added before
+  // reordering existed), all in the same batch.
+  const reorderCarousel = async (data: CarouselItem[]) => {
+    setCarousel(data);
+    const batch = writeBatch(db);
+    data.forEach((item, index) => batch.update(doc(db, 'carouselItems', item.id), { order: index }));
+    await batch.commit();
   };
 
   // At most one post is featured at a time — starring a new one un-stars
@@ -904,26 +932,39 @@ export default function ModeratorScreen() {
             <Pressable style={styles.closeBtn} onPress={() => setShowCarouselPanel(false)} hitSlop={8}>
               <Ionicons name="close" size={20} color={colors.textPrimary} />
             </Pressable>
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <NestableScrollContainer keyboardShouldPersistTaps="handled">
               <Text style={styles.header}>Home carousel</Text>
               {carousel.length === 0 && <Text style={styles.empty}>No images in the rotation yet.</Text>}
-              {carousel.map((item) => {
-                const linkedPost = item.postId ? posts.find((p) => p.id === item.postId) : null;
-                return (
-                  <View key={item.id} style={styles.carouselRow}>
-                    <Image source={{ uri: linkedPost?.imageUrl ?? item.imageUrl }} style={styles.carouselThumb} />
-                    <Text style={styles.carouselLink} numberOfLines={1}>
-                      {item.postId ? `Event: ${linkedPost?.title ?? '(deleted post)'}` : 'Image'}
-                    </Text>
-                    <Pressable
-                      onPress={() => removeCarouselItem(item, item.postId ? `Event: ${linkedPost?.title ?? 'unknown'}` : 'Image')}
-                      hitSlop={8}
-                    >
-                      <Text style={styles.deleteText}>delete</Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
+              {carousel.length > 0 && (
+                <>
+                  <Text style={styles.hint}>Drag by the handle to reorder how images rotate.</Text>
+                  <NestableDraggableFlatList
+                    data={sortedCarousel}
+                    keyExtractor={(item) => item.id}
+                    onDragEnd={({ data }) => reorderCarousel(data)}
+                    renderItem={({ item, drag, isActive }: RenderItemParams<CarouselItem>) => {
+                      const linkedPost = item.postId ? posts.find((p) => p.id === item.postId) : null;
+                      return (
+                        <View style={[styles.carouselRow, isActive && styles.carouselRowDragging]}>
+                          <Pressable onPressIn={drag} hitSlop={8}>
+                            <Ionicons name="reorder-three" size={22} color={colors.textMuted} />
+                          </Pressable>
+                          <Image source={{ uri: linkedPost?.imageUrl ?? item.imageUrl }} style={styles.carouselThumb} />
+                          <Text style={styles.carouselLink} numberOfLines={1}>
+                            {item.postId ? `Event: ${linkedPost?.title ?? '(deleted post)'}` : 'Image'}
+                          </Text>
+                          <Pressable
+                            onPress={() => removeCarouselItem(item, item.postId ? `Event: ${linkedPost?.title ?? 'unknown'}` : 'Image')}
+                            hitSlop={8}
+                          >
+                            <Text style={styles.deleteText}>delete</Text>
+                          </Pressable>
+                        </View>
+                      );
+                    }}
+                  />
+                </>
+              )}
 
               <View style={styles.modeToggle}>
                 <Pressable
@@ -971,7 +1012,7 @@ export default function ModeratorScreen() {
                   ))}
                 </>
               )}
-            </ScrollView>
+            </NestableScrollContainer>
           </View>
         </View>
       )}
@@ -1255,7 +1296,7 @@ export default function ModeratorScreen() {
             <Pressable style={styles.closeBtn} onPress={() => setShowSponsorsPanel(false)} hitSlop={8}>
               <Ionicons name="close" size={20} color={colors.textPrimary} />
             </Pressable>
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <NestableScrollContainer keyboardShouldPersistTaps="handled">
               <Text style={styles.header}>Sponsors ({sponsors.length})</Text>
               <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                 <Pressable style={[styles.addBtn, { flex: 1 }]} onPress={() => openNewSponsor('information')}>
@@ -1272,33 +1313,42 @@ export default function ModeratorScreen() {
                 the Sponsors tab while today falls within that range, and disappears after — nothing to
                 remember to turn off. A standing/year-round deal just belongs in the description instead.
                 A sponsor event can optionally link to a sponsor's own page instead of repeating who they are.
+                Drag by the handle to reorder how sponsors appear within each row on the Sponsors tab.
               </Text>
               {sponsors.length === 0 && <Text style={styles.empty}>No sponsors yet.</Text>}
-              {sponsors.map((s) => (
-                <View key={s.id} style={styles.carouselRow}>
-                  <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
-                    <View style={{ flexDirection: 'row', gap: spacing.xs }}>
-                      <View style={styles.roleTag}>
-                        <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
-                      </View>
-                      {isPromoLive(s) && (
+              <NestableDraggableFlatList
+                data={sortedSponsors}
+                keyExtractor={(s) => s.id}
+                onDragEnd={({ data }) => reorderSponsors(data)}
+                renderItem={({ item: s, drag, isActive }: RenderItemParams<Sponsor>) => (
+                  <View style={[styles.carouselRow, isActive && styles.carouselRowDragging]}>
+                    <Pressable onPressIn={drag} hitSlop={8}>
+                      <Ionicons name="reorder-three" size={22} color={colors.textMuted} />
+                    </Pressable>
+                    <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
+                      <View style={{ flexDirection: 'row', gap: spacing.xs }}>
                         <View style={styles.roleTag}>
-                          <Text style={styles.roleTagText}>Live offer</Text>
+                          <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
                         </View>
-                      )}
+                        {isPromoLive(s) && (
+                          <View style={styles.roleTag}>
+                            <Text style={styles.roleTagText}>Live offer</Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
+                    <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
+                      <Text style={styles.editText}>edit</Text>
+                    </Pressable>
+                    <Pressable onPress={() => deleteSponsor(s)} hitSlop={8}>
+                      <Text style={styles.deleteText}>delete</Text>
+                    </Pressable>
                   </View>
-                  <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
-                    <Text style={styles.editText}>edit</Text>
-                  </Pressable>
-                  <Pressable onPress={() => deleteSponsor(s)} hitSlop={8}>
-                    <Text style={styles.deleteText}>delete</Text>
-                  </Pressable>
-                </View>
-              ))}
-            </ScrollView>
+                )}
+              />
+            </NestableScrollContainer>
           </View>
         </View>
       )}
@@ -1401,14 +1451,10 @@ export default function ModeratorScreen() {
                         value={sponsorPromoText}
                         onChangeText={setSponsorPromoText}
                       />
-                      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                        <View style={{ flex: 1 }}>
-                          <SimpleDateField label="Start date (required)" value={sponsorPromoStartDate} onChange={setSponsorPromoStartDate} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <SimpleDateField label="End date (required)" value={sponsorPromoEndDate} onChange={setSponsorPromoEndDate} />
-                        </View>
-                      </View>
+                      {/* Stacked, not side-by-side — two half-width Calendar grids
+                          were too cramped to tap a specific day reliably. */}
+                      <SimpleDateField label="Start date (required)" value={sponsorPromoStartDate} onChange={setSponsorPromoStartDate} />
+                      <SimpleDateField label="End date (required)" value={sponsorPromoEndDate} onChange={setSponsorPromoEndDate} />
                       {!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate) && (
                         <Text style={styles.hint}>Fill in the offer text and both dates to save.</Text>
                       )}
@@ -1831,7 +1877,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
   },
+  carouselRowDragging: { opacity: 0.7 },
   carouselThumb: { width: 44, height: 44, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
   carouselLink: { flex: 1, fontSize: 12, color: colors.textSecondary },
   modeToggle: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, marginBottom: spacing.md },

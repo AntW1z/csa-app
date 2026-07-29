@@ -106,6 +106,10 @@ export interface CarouselItem {
   id: string;
   imageUrl: string;
   postId?: string;
+  // Manual drag-to-reorder position, lowest first. Items without this
+  // (added before reordering existed) just sort after ordered ones in
+  // their original createdAt order — see resolveOrder in moderator.tsx.
+  order?: number;
   createdAt: any;
 }
 
@@ -167,5 +171,9 @@ export interface Sponsor {
   // a small tappable brand row on the event's detail view, jumping
   // straight to that sponsor's own page.
   linkedSponsorId?: string;
+  // Manual drag-to-reorder position within its own kind (and, for
+  // information sponsors, within its category), lowest first. See
+  // CarouselItem.order for the same fallback-sort pattern.
+  order?: number;
   createdAt: any;
 }

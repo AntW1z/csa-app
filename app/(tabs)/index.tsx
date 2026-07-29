@@ -12,7 +12,7 @@ import PostDetailModal from '../../src/components/PostDetailModal';
 import InfoModal from '../../src/components/InfoModal';
 import { Post, CarouselItem } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
-import { getEventWindow } from '../../src/utils';
+import { getEventWindow, sortByOrder } from '../../src/utils';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -95,7 +95,7 @@ export default function Home() {
   // image, not the copy saved on the carousel item back when it was linked
   // — otherwise editing a post's image after adding it to the carousel
   // silently leaves the old picture rotating on Home.
-  const resolvedCarousel = carousel.map((item) =>
+  const resolvedCarousel = sortByOrder(carousel).map((item) =>
     item.postId && postsById[item.postId] ? { ...item, imageUrl: postsById[item.postId].imageUrl ?? item.imageUrl } : item
   );
 

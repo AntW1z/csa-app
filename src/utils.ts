@@ -23,6 +23,15 @@ export function formatEventTimeRange(start?: string, end?: string, allDay?: bool
   return `${dateFmt(s)}, ${timeFmt(s)} – ${dateFmt(e)}, ${timeFmt(e)}`;
 }
 
+// Applies a moderator's manual drag-to-reorder position, lowest first.
+// Items with no `order` yet (added before reordering existed, or never
+// dragged) sort after every ordered item but keep their relative fetch
+// order among themselves (a stable sort, since they all compare equal at
+// +Infinity) — so nothing jumps around until a moderator actually drags.
+export function sortByOrder<T extends { order?: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
+}
+
 const pad = (n: number) => String(n).padStart(2, '0');
 export const toDateString = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
