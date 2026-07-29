@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
-import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorCategory } from '../../src/types';
+import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorCategory, SponsorKind } from '../../src/types';
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
 import { formatEventTimeRange, isPromoLive } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
@@ -293,6 +293,10 @@ export default function ModeratorScreen() {
   const [sponsorPromoText, setSponsorPromoText] = useState('');
   const [sponsorPromoStartDate, setSponsorPromoStartDate] = useState<string | null>(null);
   const [sponsorPromoEndDate, setSponsorPromoEndDate] = useState<string | null>(null);
+  const [sponsorKind, setSponsorKind] = useState<SponsorKind>('information');
+  const [sponsorEventDate, setSponsorEventDate] = useState<string | null>(null);
+  const [sponsorLinkedSponsorId, setSponsorLinkedSponsorId] = useState<string | null>(null);
+  const [showLinkedSponsorPicker, setShowLinkedSponsorPicker] = useState(false);
 
   useEffect(() => {
     // Keyed on uid (not just mounted once) so a sign-out/sign-in cycle
@@ -501,18 +505,27 @@ export default function ModeratorScreen() {
     }
   };
 
-  const openNewSponsor = () => {
+  // Sponsors created before the kind picker existed have no `kind` field —
+  // they're all "information" (the only kind that used to exist).
+  const resolveSponsorKind = (s: Sponsor): SponsorKind => (s.kind === 'event' ? 'event' : 'information');
+
+  const informationSponsors = sponsors.filter((s) => resolveSponsorKind(s) === 'information');
+
+  const openNewSponsor = (kind: SponsorKind) => {
     setEditingSponsor(null);
+    setSponsorKind(kind);
     setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription('');
     setSponsorCategory('food'); setSponsorLinks([{ label: '', url: '' }]);
     setSponsorHasPromo(false); setSponsorPromoText('');
     setSponsorPromoStartDate(null); setSponsorPromoEndDate(null);
+    setSponsorEventDate(null); setSponsorLinkedSponsorId(null);
     setSponsorImageUploading(false);
     setShowNewSponsor(true);
   };
 
   const openEditSponsor = (s: Sponsor) => {
     setEditingSponsor(s);
+    setSponsorKind(resolveSponsorKind(s));
     setSponsorName(s.name);
     setSponsorImageUrl(s.imageUrl);
     setSponsorImageUploading(false);
@@ -523,6 +536,8 @@ export default function ModeratorScreen() {
     setSponsorPromoText(s.promoText ?? '');
     setSponsorPromoStartDate(s.promoStartDate ?? null);
     setSponsorPromoEndDate(s.promoEndDate ?? null);
+    setSponsorEventDate(s.eventDate ?? null);
+    setSponsorLinkedSponsorId(s.linkedSponsorId ?? null);
     setShowNewSponsor(true);
   };
 
@@ -542,40 +557,55 @@ export default function ModeratorScreen() {
   // Once "Limited-time offer" is toggled on, all three fields are required
   // to save — this is what prevents ending up with promo text but no
   // dates (which silently never shows up anywhere, since isPromoLive
-  // requires all three).
+  // requires all three). Event-kind sponsors skip promo validation
+  // entirely, since that's an information-kind-only concept.
   const canSaveSponsor = !!(sponsorName.trim() && sponsorImageUrl.trim()) && !sponsorImageUploading &&
-    (!sponsorHasPromo || !!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate));
+    (sponsorKind === 'event' || !sponsorHasPromo || !!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate));
 
   const saveSponsor = async () => {
     if (!canSaveSponsor) return;
-    // deleteField() only works against an existing doc (updateDoc) — for a
-    // brand-new sponsor with the toggle off, there's nothing to clear, so
-    // the promo fields are just omitted entirely rather than "deleted".
-    const promoFields = sponsorHasPromo
-      ? { promoText: sponsorPromoText.trim(), promoStartDate: sponsorPromoStartDate, promoEndDate: sponsorPromoEndDate }
-      : editingSponsor
-      ? { promoText: deleteField(), promoStartDate: deleteField(), promoEndDate: deleteField() }
-      : {};
-    // Rows with no URL are just unused form rows, not real links. A label
-    // left blank falls back to "Visit" so the button never renders empty.
-    const validLinks = sponsorLinks
-      .map((l) => ({ label: l.label.trim() || 'Visit', url: l.url.trim() }))
-      .filter((l) => l.url);
-    const linksField = validLinks.length > 0 ? { links: validLinks } : editingSponsor ? { links: deleteField() } : {};
+
+    let kindFields: Record<string, unknown>;
+    if (sponsorKind === 'event') {
+      kindFields = {
+        ...(sponsorEventDate ? { eventDate: sponsorEventDate } : {}),
+        ...(sponsorLinkedSponsorId
+          ? { linkedSponsorId: sponsorLinkedSponsorId }
+          : editingSponsor
+          ? { linkedSponsorId: deleteField() }
+          : {}),
+      };
+    } else {
+      // deleteField() only works against an existing doc (updateDoc) — for
+      // a brand-new sponsor with the toggle off, there's nothing to clear,
+      // so the promo fields are just omitted entirely rather than "deleted".
+      const promoFields = sponsorHasPromo
+        ? { promoText: sponsorPromoText.trim(), promoStartDate: sponsorPromoStartDate, promoEndDate: sponsorPromoEndDate }
+        : editingSponsor
+        ? { promoText: deleteField(), promoStartDate: deleteField(), promoEndDate: deleteField() }
+        : {};
+      // Rows with no URL are just unused form rows, not real links. A label
+      // left blank falls back to "Visit" so the button never renders empty.
+      const validLinks = sponsorLinks
+        .map((l) => ({ label: l.label.trim() || 'Visit', url: l.url.trim() }))
+        .filter((l) => l.url);
+      const linksField = validLinks.length > 0 ? { links: validLinks } : editingSponsor ? { links: deleteField() } : {};
+      kindFields = { category: sponsorCategory, ...linksField, ...promoFields };
+    }
+
     const data = {
+      kind: sponsorKind,
       name: sponsorName.trim(),
       imageUrl: sponsorImageUrl.trim(),
-      category: sponsorCategory,
       ...(sponsorDescription.trim() ? { description: sponsorDescription.trim() } : {}),
-      ...linksField,
-      ...promoFields,
+      ...kindFields,
     };
     if (editingSponsor) {
       await updateDoc(doc(db, 'sponsors', editingSponsor.id), data);
-      logAction(`Edited sponsor "${sponsorName}"`);
+      logAction(`Edited ${sponsorKind === 'event' ? 'sponsor event' : 'sponsor'} "${sponsorName}"`);
     } else {
       await addDoc(collection(db, 'sponsors'), { ...data, createdAt: serverTimestamp() });
-      logAction(`Added sponsor "${sponsorName}"`);
+      logAction(`Added ${sponsorKind === 'event' ? 'sponsor event' : 'sponsor'} "${sponsorName}"`);
     }
     closeNewSponsor();
   };
@@ -1227,14 +1257,21 @@ export default function ModeratorScreen() {
             </Pressable>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.header}>Sponsors ({sponsors.length})</Text>
-              <Pressable style={styles.addBtn} onPress={openNewSponsor}>
-                <Ionicons name="add-circle-outline" size={18} color={colors.red} />
-                <Text style={styles.addBtnText}>New sponsor</Text>
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <Pressable style={[styles.addBtn, { flex: 1 }]} onPress={() => openNewSponsor('information')}>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.red} />
+                  <Text style={styles.addBtnText}>New sponsor</Text>
+                </Pressable>
+                <Pressable style={[styles.addBtn, { flex: 1 }]} onPress={() => openNewSponsor('event')}>
+                  <Ionicons name="calendar-outline" size={18} color={colors.red} />
+                  <Text style={styles.addBtnText}>New event</Text>
+                </Pressable>
+              </View>
               <Text style={styles.hint}>
                 A limited-time offer (promo text + start/end dates) automatically appears at the top of
                 the Sponsors tab while today falls within that range, and disappears after — nothing to
                 remember to turn off. A standing/year-round deal just belongs in the description instead.
+                A sponsor event can optionally link to a sponsor's own page instead of repeating who they are.
               </Text>
               {sponsors.length === 0 && <Text style={styles.empty}>No sponsors yet.</Text>}
               {sponsors.map((s) => (
@@ -1242,11 +1279,16 @@ export default function ModeratorScreen() {
                   <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
-                    {isPromoLive(s) && (
+                    <View style={{ flexDirection: 'row', gap: spacing.xs }}>
                       <View style={styles.roleTag}>
-                        <Text style={styles.roleTagText}>Live offer</Text>
+                        <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
                       </View>
-                    )}
+                      {isPromoLive(s) && (
+                        <View style={styles.roleTag}>
+                          <Text style={styles.roleTagText}>Live offer</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
                   <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
                     <Text style={styles.editText}>edit</Text>
@@ -1268,104 +1310,185 @@ export default function ModeratorScreen() {
               <Ionicons name="close" size={20} color={colors.textPrimary} />
             </Pressable>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <Text style={styles.header}>{editingSponsor ? 'Edit sponsor' : 'New sponsor'}</Text>
-              <TextInput style={styles.input} placeholder="Sponsor name (required)" placeholderTextColor={colors.textMuted} value={sponsorName} onChangeText={setSponsorName} />
+              <Text style={styles.header}>
+                {editingSponsor ? `Edit ${sponsorKind === 'event' ? 'event' : 'sponsor'}` : sponsorKind === 'event' ? 'New sponsor event' : 'New sponsor'}
+              </Text>
+              <TextInput
+                style={styles.input}
+                placeholder={sponsorKind === 'event' ? 'Event name (required)' : 'Sponsor name (required)'}
+                placeholderTextColor={colors.textMuted}
+                value={sponsorName}
+                onChangeText={setSponsorName}
+              />
               <ImagePickerField folder="sponsors" value={sponsorImageUrl} onChange={setSponsorImageUrl} onUploadingChange={setSponsorImageUploading} />
 
-              <Text style={styles.manageSectionLabel}>Category</Text>
-              <View style={styles.modeToggle}>
-                {(['food', 'services', 'other'] as SponsorCategory[]).map((c) => (
-                  <Pressable
-                    key={c}
-                    style={[styles.modeBtn, sponsorCategory === c && styles.modeBtnActive]}
-                    onPress={() => setSponsorCategory(c)}
-                  >
-                    <Text style={[styles.modeBtnText, sponsorCategory === c && styles.modeBtnTextActive]}>
-                      {c === 'food' ? 'Food' : c === 'services' ? 'Services' : 'Other'}
-                    </Text>
+              {sponsorKind === 'information' ? (
+                <>
+                  <Text style={styles.manageSectionLabel}>Category</Text>
+                  <View style={styles.modeToggle}>
+                    {(['food', 'services', 'other'] as SponsorCategory[]).map((c) => (
+                      <Pressable
+                        key={c}
+                        style={[styles.modeBtn, sponsorCategory === c && styles.modeBtnActive]}
+                        onPress={() => setSponsorCategory(c)}
+                      >
+                        <Text style={[styles.modeBtnText, sponsorCategory === c && styles.modeBtnTextActive]}>
+                          {c === 'food' ? 'Food' : c === 'services' ? 'Services' : 'Other'}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+
+                  <TextInput
+                    style={[styles.input, { marginTop: spacing.sm }]}
+                    placeholder="Description — services offered, why members should check them out, standing deals, etc."
+                    placeholderTextColor={colors.textMuted}
+                    value={sponsorDescription}
+                    onChangeText={setSponsorDescription}
+                    multiline
+                  />
+
+                  <Text style={styles.manageSectionLabel}>Links (optional)</Text>
+                  <Text style={styles.hint}>
+                    Button text is up to you (e.g. "Order on the app", "View menu", "Get directions") — the URL
+                    itself already opens their app instead of a browser automatically, if they support that.
+                  </Text>
+                  {sponsorLinks.map((linkItem, index) => (
+                    <View key={index} style={styles.sponsorLinkRow}>
+                      <View style={{ flex: 1 }}>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Button text (e.g. Visit website)"
+                          placeholderTextColor={colors.textMuted}
+                          value={linkItem.label}
+                          onChangeText={(v) => updateSponsorLink(index, 'label', v)}
+                        />
+                        <TextInput
+                          style={styles.input}
+                          placeholder="URL"
+                          placeholderTextColor={colors.textMuted}
+                          autoCapitalize="none"
+                          value={linkItem.url}
+                          onChangeText={(v) => updateSponsorLink(index, 'url', v)}
+                        />
+                      </View>
+                      {sponsorLinks.length > 1 && (
+                        <Pressable onPress={() => removeSponsorLink(index)} hitSlop={8} style={styles.sponsorLinkRemove}>
+                          <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                        </Pressable>
+                      )}
+                    </View>
+                  ))}
+                  <Pressable style={styles.addBtn} onPress={addSponsorLink}>
+                    <Ionicons name="add-circle-outline" size={16} color={colors.red} />
+                    <Text style={styles.addBtnText}>Add another link</Text>
                   </Pressable>
-                ))}
-              </View>
 
-              <TextInput
-                style={[styles.input, { marginTop: spacing.sm }]}
-                placeholder="Description — services offered, why members should check them out, standing deals, etc."
-                placeholderTextColor={colors.textMuted}
-                value={sponsorDescription}
-                onChangeText={setSponsorDescription}
-                multiline
-              />
-
-              <Text style={styles.manageSectionLabel}>Links (optional)</Text>
-              <Text style={styles.hint}>
-                Button text is up to you (e.g. "Order on the app", "View menu", "Get directions") — the URL
-                itself already opens their app instead of a browser automatically, if they support that.
-              </Text>
-              {sponsorLinks.map((linkItem, index) => (
-                <View key={index} style={styles.sponsorLinkRow}>
-                  <View style={{ flex: 1 }}>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Button text (e.g. Visit website)"
-                      placeholderTextColor={colors.textMuted}
-                      value={linkItem.label}
-                      onChangeText={(v) => updateSponsorLink(index, 'label', v)}
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="URL"
-                      placeholderTextColor={colors.textMuted}
-                      autoCapitalize="none"
-                      value={linkItem.url}
-                      onChangeText={(v) => updateSponsorLink(index, 'url', v)}
+                  <View style={styles.row}>
+                    <Text style={styles.rowLabel}>Limited-time offer</Text>
+                    <Switch
+                      value={sponsorHasPromo}
+                      onValueChange={setSponsorHasPromo}
+                      trackColor={{ true: colors.red, false: colors.borderStrong }}
                     />
                   </View>
-                  {sponsorLinks.length > 1 && (
-                    <Pressable onPress={() => removeSponsorLink(index)} hitSlop={8} style={styles.sponsorLinkRemove}>
-                      <Ionicons name="close-circle" size={20} color={colors.textMuted} />
-                    </Pressable>
+                  {sponsorHasPromo && (
+                    <>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="e.g. BOGO boba this weekend! (required)"
+                        placeholderTextColor={colors.textMuted}
+                        value={sponsorPromoText}
+                        onChangeText={setSponsorPromoText}
+                      />
+                      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                        <View style={{ flex: 1 }}>
+                          <SimpleDateField label="Start date (required)" value={sponsorPromoStartDate} onChange={setSponsorPromoStartDate} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <SimpleDateField label="End date (required)" value={sponsorPromoEndDate} onChange={setSponsorPromoEndDate} />
+                        </View>
+                      </View>
+                      {!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate) && (
+                        <Text style={styles.hint}>Fill in the offer text and both dates to save.</Text>
+                      )}
+                    </>
                   )}
-                </View>
-              ))}
-              <Pressable style={styles.addBtn} onPress={addSponsorLink}>
-                <Ionicons name="add-circle-outline" size={16} color={colors.red} />
-                <Text style={styles.addBtnText}>Add another link</Text>
-              </Pressable>
-
-              <View style={styles.row}>
-                <Text style={styles.rowLabel}>Limited-time offer</Text>
-                <Switch
-                  value={sponsorHasPromo}
-                  onValueChange={setSponsorHasPromo}
-                  trackColor={{ true: colors.red, false: colors.borderStrong }}
-                />
-              </View>
-              {sponsorHasPromo && (
+                </>
+              ) : (
                 <>
                   <TextInput
-                    style={styles.input}
-                    placeholder="e.g. BOGO boba this weekend! (required)"
+                    style={[styles.input, { marginTop: spacing.sm }]}
+                    placeholder="Description — what's happening, why members should come, etc."
                     placeholderTextColor={colors.textMuted}
-                    value={sponsorPromoText}
-                    onChangeText={setSponsorPromoText}
+                    value={sponsorDescription}
+                    onChangeText={setSponsorDescription}
+                    multiline
                   />
-                  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                    <View style={{ flex: 1 }}>
-                      <SimpleDateField label="Start date (required)" value={sponsorPromoStartDate} onChange={setSponsorPromoStartDate} />
+
+                  <Text style={styles.manageSectionLabel}>Date</Text>
+                  <SimpleDateField label="Event date" value={sponsorEventDate} onChange={setSponsorEventDate} />
+
+                  <Text style={styles.manageSectionLabel}>Sponsor (optional)</Text>
+                  <Text style={styles.hint}>
+                    Link this event to one of your sponsors instead of repeating who they are — their name
+                    becomes a tappable credit at the top of the event that jumps to their own page.
+                  </Text>
+                  {sponsorLinkedSponsorId ? (
+                    <View style={styles.linkedSponsorBox}>
+                      <Image
+                        source={{ uri: informationSponsors.find((s) => s.id === sponsorLinkedSponsorId)?.imageUrl }}
+                        style={styles.linkedSponsorAvatar}
+                      />
+                      <Text style={styles.linkedSponsorName} numberOfLines={1}>
+                        {informationSponsors.find((s) => s.id === sponsorLinkedSponsorId)?.name ?? '(deleted sponsor)'}
+                      </Text>
+                      <Pressable onPress={() => setSponsorLinkedSponsorId(null)} hitSlop={8}>
+                        <Text style={styles.deleteText}>unlink</Text>
+                      </Pressable>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <SimpleDateField label="End date (required)" value={sponsorPromoEndDate} onChange={setSponsorPromoEndDate} />
-                    </View>
-                  </View>
-                  {!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate) && (
-                    <Text style={styles.hint}>Fill in the offer text and both dates to save.</Text>
+                  ) : (
+                    <Pressable style={styles.addBtn} onPress={() => setShowLinkedSponsorPicker(true)}>
+                      <Ionicons name="pricetag-outline" size={16} color={colors.red} />
+                      <Text style={styles.addBtnText}>Link a sponsor</Text>
+                    </Pressable>
                   )}
                 </>
               )}
 
-              <Pressable style={[styles.button, !canSaveSponsor && styles.buttonDisabled]} onPress={saveSponsor} disabled={!canSaveSponsor}>
-                <Text style={styles.buttonText}>{editingSponsor ? 'Save changes' : 'Add sponsor'}</Text>
+              <Pressable style={[styles.button, !canSaveSponsor && styles.buttonDisabled, { marginTop: spacing.md }]} onPress={saveSponsor} disabled={!canSaveSponsor}>
+                <Text style={styles.buttonText}>{editingSponsor ? 'Save changes' : sponsorKind === 'event' ? 'Add event' : 'Add sponsor'}</Text>
               </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {showLinkedSponsorPicker && (
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Pressable style={styles.closeBtn} onPress={() => setShowLinkedSponsorPicker(false)} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+            <ScrollView>
+              <Text style={styles.header}>Link a sponsor</Text>
+              {informationSponsors.length === 0 && (
+                <Text style={styles.empty}>No sponsors yet — add one with "New sponsor" first.</Text>
+              )}
+              {informationSponsors.map((s) => (
+                <Pressable
+                  key={s.id}
+                  style={styles.eventPickRow}
+                  onPress={() => {
+                    setSponsorLinkedSponsorId(s.id);
+                    setShowLinkedSponsorPicker(false);
+                  }}
+                >
+                  <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
+                  <Text style={styles.eventPickTitle} numberOfLines={1}>{s.name}</Text>
+                  <Ionicons name="add-circle-outline" size={20} color={colors.red} />
+                </Pressable>
+              ))}
             </ScrollView>
           </View>
         </View>
@@ -1693,6 +1816,16 @@ const styles = StyleSheet.create({
   reminderPresetText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   sponsorLinkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   sponsorLinkRemove: { paddingTop: spacing.md },
+  linkedSponsorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+  },
+  linkedSponsorAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface },
+  linkedSponsorName: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   carouselRow: {
     flexDirection: 'row',
     alignItems: 'center',

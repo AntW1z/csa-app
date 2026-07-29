@@ -125,10 +125,22 @@ export interface SponsorLink {
   url: string;
 }
 
-// A sponsor shown on the Sponsors tab — moderator-managed, same
-// public-read/moderator-write trust level as posts and the carousel.
+// 'information' is the evergreen brand profile (category, links, optional
+// limited-time offer) — everything that existed before. 'event' is a
+// one-off happening (a tabling event, a collab) with its own date, that
+// can optionally reference an 'information' sponsor for the same brand
+// instead of duplicating a description — like a YouTube video crediting
+// the channel it belongs to, rather than re-describing the channel every
+// time. Missing/unrecognized values resolve to 'information' (see
+// resolveKind in app/(tabs)/sponsors.tsx) so nothing existing disappears.
+export type SponsorKind = 'information' | 'event';
+
+// A sponsor (or sponsor event) shown on the Sponsors tab — moderator-
+// managed, same public-read/moderator-write trust level as posts and the
+// carousel.
 export interface Sponsor {
   id: string;
+  kind: SponsorKind;
   name: string;
   imageUrl: string;
   // Full writeup (services offered, why members should check them out,
@@ -136,6 +148,7 @@ export interface Sponsor {
   // detail view. Sponsors get more room for this than events do, since
   // most of what a sponsor listing needs to communicate *is* this.
   description?: string;
+  // 'information' kind only:
   category?: SponsorCategory;
   links?: SponsorLink[];
   // A time-boxed offer ("BOGO this weekend!"), separate from the
@@ -148,5 +161,11 @@ export interface Sponsor {
   promoText?: string;
   promoStartDate?: string;
   promoEndDate?: string;
+  // 'event' kind only:
+  eventDate?: string;
+  // References another Sponsor doc (an 'information'-kind one) — shown as
+  // a small tappable brand row on the event's detail view, jumping
+  // straight to that sponsor's own page.
+  linkedSponsorId?: string;
   createdAt: any;
 }

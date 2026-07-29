@@ -3,7 +3,7 @@ import { View, Text, Image, Pressable, ScrollView, Linking, StyleSheet } from 'r
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
-import { Sponsor, SponsorCategory } from '../../src/types';
+import { Sponsor, SponsorCategory, SponsorKind } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 import { isPromoLive } from '../../src/utils';
 
@@ -23,6 +23,16 @@ const CATEGORY_ORDER: SponsorCategory[] = ['food', 'services', 'other'];
 const resolveCategory = (s: Sponsor): SponsorCategory =>
   s.category === 'food' || s.category === 'services' ? s.category : 'other';
 
+// Sponsors created before the kind picker existed have no `kind` field —
+// they're all "information" (the only kind that used to exist).
+const resolveSponsorKind = (s: Sponsor): SponsorKind => (s.kind === 'event' ? 'event' : 'information');
+
+const formatEventDate = (d?: string) => {
+  if (!d) return '';
+  const [y, m, day] = d.split('-').map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
 export default function SponsorsScreen() {
   const [sponsors, setSponsors] = useState<Sponsor[]>([]);
   const [selected, setSelected] = useState<Sponsor | null>(null);
@@ -32,7 +42,10 @@ export default function SponsorsScreen() {
     return onSnapshot(q, (snap) => setSponsors(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Sponsor))));
   }, []);
 
-  const liveOffers = sponsors.filter(isPromoLive);
+  const informationSponsors = sponsors.filter((s) => resolveSponsorKind(s) === 'information');
+  const events = sponsors.filter((s) => resolveSponsorKind(s) === 'event');
+
+  const liveOffers = informationSponsors.filter(isPromoLive);
   // While a sponsor's deal is live, they're already shown in the offers
   // row above — showing them again in their category row too would just
   // duplicate the same sponsor twice on the same page. Once the offer's
@@ -41,10 +54,14 @@ export default function SponsorsScreen() {
   const rows = CATEGORY_ORDER.map((cat) => ({
     category: cat,
     label: CATEGORY_LABEL[cat],
-    items: sponsors.filter((s) => resolveCategory(s) === cat && !isPromoLive(s)),
+    items: informationSponsors.filter((s) => resolveCategory(s) === cat && !isPromoLive(s)),
   })).filter((r) => r.items.length > 0);
 
   const openLink = (url: string) => Linking.openURL(url);
+
+  const linkedSponsor = selected?.linkedSponsorId
+    ? sponsors.find((s) => s.id === selected.linkedSponsorId) ?? null
+    : null;
 
   return (
     <View style={styles.container}>
@@ -65,6 +82,23 @@ export default function SponsorsScreen() {
                     <Text style={styles.bannerPromo} numberOfLines={2}>{s.promoText}</Text>
                     <Text style={styles.bannerName}>{s.name}</Text>
                   </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {events.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Sponsor events</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowContent}>
+              {events.map((s) => (
+                <Pressable key={s.id} style={styles.card} onPress={() => setSelected(s)}>
+                  <View style={styles.cardImageWrap}>
+                    <Image source={{ uri: s.imageUrl }} style={styles.cardImage} resizeMode="cover" />
+                  </View>
+                  <Text style={styles.name} numberOfLines={1}>{s.name}</Text>
+                  {s.eventDate ? <Text style={styles.cardSubtext}>{formatEventDate(s.eventDate)}</Text> : null}
                 </Pressable>
               ))}
             </ScrollView>
@@ -102,10 +136,27 @@ export default function SponsorsScreen() {
             <ScrollView>
               <Image source={{ uri: selected.imageUrl }} style={styles.detailImage} resizeMode="cover" />
               <View style={styles.detailBody}>
-                <View style={styles.categoryPill}>
-                  <Text style={styles.categoryPillText}>{CATEGORY_LABEL[resolveCategory(selected)]}</Text>
-                </View>
+                {resolveSponsorKind(selected) === 'information' ? (
+                  <View style={styles.categoryPill}>
+                    <Text style={styles.categoryPillText}>{CATEGORY_LABEL[resolveCategory(selected)]}</Text>
+                  </View>
+                ) : (
+                  selected.eventDate && (
+                    <View style={styles.categoryPill}>
+                      <Text style={styles.categoryPillText}>{formatEventDate(selected.eventDate)}</Text>
+                    </View>
+                  )
+                )}
                 <Text style={styles.detailName}>{selected.name}</Text>
+
+                {resolveSponsorKind(selected) === 'event' && linkedSponsor && (
+                  <Pressable style={styles.sponsorCreditRow} onPress={() => setSelected(linkedSponsor)}>
+                    <Text style={styles.sponsorCreditLabel}>Sponsor:</Text>
+                    <Image source={{ uri: linkedSponsor.imageUrl }} style={styles.sponsorCreditAvatar} />
+                    <Text style={styles.sponsorCreditName} numberOfLines={1}>{linkedSponsor.name}</Text>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                  </Pressable>
+                )}
 
                 {isPromoLive(selected) && (
                   <View style={styles.detailPromoBox}>
@@ -179,6 +230,7 @@ const styles = StyleSheet.create({
   },
   promoRibbonText: { color: colors.onAccent, fontSize: 9, fontWeight: '800' },
   name: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, marginTop: spacing.xs },
+  cardSubtext: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
 
   overlay: {
     position: 'absolute',
@@ -211,6 +263,19 @@ const styles = StyleSheet.create({
   },
   categoryPillText: { color: colors.amberSoftText, fontSize: 10, fontWeight: '700' },
   detailName: { fontSize: 20, fontWeight: '800', color: colors.textPrimary },
+  sponsorCreditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  sponsorCreditLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
+  sponsorCreditAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.surface },
+  sponsorCreditName: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, maxWidth: 140 },
   detailPromoBox: {
     backgroundColor: colors.redSoft,
     borderRadius: radius.md,
