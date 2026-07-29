@@ -33,10 +33,15 @@ export default function SponsorsScreen() {
   }, []);
 
   const liveOffers = sponsors.filter(isPromoLive);
+  // While a sponsor's deal is live, they're already shown in the offers
+  // row above — showing them again in their category row too would just
+  // duplicate the same sponsor twice on the same page. Once the offer's
+  // date range passes, isPromoLive stops matching and they reappear here
+  // automatically, no moderator action needed either way.
   const rows = CATEGORY_ORDER.map((cat) => ({
     category: cat,
     label: CATEGORY_LABEL[cat],
-    items: sponsors.filter((s) => resolveCategory(s) === cat),
+    items: sponsors.filter((s) => resolveCategory(s) === cat && !isPromoLive(s)),
   })).filter((r) => r.items.length > 0);
 
   const openLink = (url: string) => Linking.openURL(url);
