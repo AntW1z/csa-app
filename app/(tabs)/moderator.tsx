@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, FlatList, ScrollView, StyleSheet, Switch, Image } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, ScrollView, StyleSheet, Switch, Image, Platform } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import { NestableScrollContainer, NestableDraggableFlatList, RenderItemParams } from 'react-native-draggable-flatlist';
@@ -524,6 +524,16 @@ export default function ModeratorScreen() {
     await batch.commit();
   };
 
+  // react-native-draggable-flatlist relies on findNodeHandle, which isn't
+  // supported on web — so web gets up/down buttons instead of drag handles.
+  const moveSponsor = (index: number, direction: -1 | 1) => {
+    const data = [...sortedSponsors];
+    const target = index + direction;
+    if (target < 0 || target >= data.length) return;
+    [data[index], data[target]] = [data[target], data[index]];
+    reorderSponsors(data);
+  };
+
   const openNewSponsor = (kind: SponsorKind) => {
     setEditingSponsor(null);
     setSponsorKind(kind);
@@ -739,6 +749,16 @@ export default function ModeratorScreen() {
     await batch.commit();
   };
 
+  // react-native-draggable-flatlist relies on findNodeHandle, which isn't
+  // supported on web — so web gets up/down buttons instead of drag handles.
+  const moveCarouselItem = (index: number, direction: -1 | 1) => {
+    const data = [...sortedCarousel];
+    const target = index + direction;
+    if (target < 0 || target >= data.length) return;
+    [data[index], data[target]] = [data[target], data[index]];
+    reorderCarousel(data);
+  };
+
   // At most one post is featured at a time — starring a new one un-stars
   // whichever one currently holds it, using the already-live `posts` list
   // rather than an extra query.
@@ -935,7 +955,37 @@ export default function ModeratorScreen() {
             <NestableScrollContainer keyboardShouldPersistTaps="handled">
               <Text style={styles.header}>Home carousel</Text>
               {carousel.length === 0 && <Text style={styles.empty}>No images in the rotation yet.</Text>}
-              {carousel.length > 0 && (
+              {carousel.length > 0 && Platform.OS === 'web' && (
+                <>
+                  <Text style={styles.hint}>Use the arrows to reorder how images rotate.</Text>
+                  {sortedCarousel.map((item, index) => {
+                    const linkedPost = item.postId ? posts.find((p) => p.id === item.postId) : null;
+                    return (
+                      <View key={item.id} style={styles.carouselRow}>
+                        <View style={styles.reorderArrows}>
+                          <Pressable onPress={() => moveCarouselItem(index, -1)} disabled={index === 0} hitSlop={4}>
+                            <Ionicons name="chevron-up" size={16} color={index === 0 ? colors.borderStrong : colors.textMuted} />
+                          </Pressable>
+                          <Pressable onPress={() => moveCarouselItem(index, 1)} disabled={index === sortedCarousel.length - 1} hitSlop={4}>
+                            <Ionicons name="chevron-down" size={16} color={index === sortedCarousel.length - 1 ? colors.borderStrong : colors.textMuted} />
+                          </Pressable>
+                        </View>
+                        <Image source={{ uri: linkedPost?.imageUrl ?? item.imageUrl }} style={styles.carouselThumb} />
+                        <Text style={styles.carouselLink} numberOfLines={1}>
+                          {item.postId ? `Event: ${linkedPost?.title ?? '(deleted post)'}` : 'Image'}
+                        </Text>
+                        <Pressable
+                          onPress={() => removeCarouselItem(item, item.postId ? `Event: ${linkedPost?.title ?? 'unknown'}` : 'Image')}
+                          hitSlop={8}
+                        >
+                          <Text style={styles.deleteText}>delete</Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </>
+              )}
+              {carousel.length > 0 && Platform.OS !== 'web' && (
                 <>
                   <Text style={styles.hint}>Drag by the handle to reorder how images rotate.</Text>
                   <NestableDraggableFlatList
@@ -1313,41 +1363,76 @@ export default function ModeratorScreen() {
                 the Sponsors tab while today falls within that range, and disappears after — nothing to
                 remember to turn off. A standing/year-round deal just belongs in the description instead.
                 A sponsor event can optionally link to a sponsor's own page instead of repeating who they are.
-                Drag by the handle to reorder how sponsors appear within each row on the Sponsors tab.
+                {Platform.OS === 'web' ? ' Use the arrows' : ' Drag by the handle'} to reorder how sponsors appear within each row on the Sponsors tab.
               </Text>
               {sponsors.length === 0 && <Text style={styles.empty}>No sponsors yet.</Text>}
-              <NestableDraggableFlatList
-                data={sortedSponsors}
-                keyExtractor={(s) => s.id}
-                onDragEnd={({ data }) => reorderSponsors(data)}
-                renderItem={({ item: s, drag, isActive }: RenderItemParams<Sponsor>) => (
-                  <View style={[styles.carouselRow, isActive && styles.carouselRowDragging]}>
-                    <Pressable onPressIn={drag} hitSlop={8}>
-                      <Ionicons name="reorder-three" size={22} color={colors.textMuted} />
-                    </Pressable>
-                    <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
-                      <View style={{ flexDirection: 'row', gap: spacing.xs }}>
-                        <View style={styles.roleTag}>
-                          <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
-                        </View>
-                        {isPromoLive(s) && (
-                          <View style={styles.roleTag}>
-                            <Text style={styles.roleTagText}>Live offer</Text>
-                          </View>
-                        )}
+              {Platform.OS === 'web'
+                ? sortedSponsors.map((s, index) => (
+                    <View key={s.id} style={styles.carouselRow}>
+                      <View style={styles.reorderArrows}>
+                        <Pressable onPress={() => moveSponsor(index, -1)} disabled={index === 0} hitSlop={4}>
+                          <Ionicons name="chevron-up" size={16} color={index === 0 ? colors.borderStrong : colors.textMuted} />
+                        </Pressable>
+                        <Pressable onPress={() => moveSponsor(index, 1)} disabled={index === sortedSponsors.length - 1} hitSlop={4}>
+                          <Ionicons name="chevron-down" size={16} color={index === sortedSponsors.length - 1 ? colors.borderStrong : colors.textMuted} />
+                        </Pressable>
                       </View>
+                      <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
+                        <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                          <View style={styles.roleTag}>
+                            <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
+                          </View>
+                          {isPromoLive(s) && (
+                            <View style={styles.roleTag}>
+                              <Text style={styles.roleTagText}>Live offer</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
+                        <Text style={styles.editText}>edit</Text>
+                      </Pressable>
+                      <Pressable onPress={() => deleteSponsor(s)} hitSlop={8}>
+                        <Text style={styles.deleteText}>delete</Text>
+                      </Pressable>
                     </View>
-                    <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
-                      <Text style={styles.editText}>edit</Text>
-                    </Pressable>
-                    <Pressable onPress={() => deleteSponsor(s)} hitSlop={8}>
-                      <Text style={styles.deleteText}>delete</Text>
-                    </Pressable>
-                  </View>
+                  ))
+                : (
+                  <NestableDraggableFlatList
+                    data={sortedSponsors}
+                    keyExtractor={(s) => s.id}
+                    onDragEnd={({ data }) => reorderSponsors(data)}
+                    renderItem={({ item: s, drag, isActive }: RenderItemParams<Sponsor>) => (
+                      <View style={[styles.carouselRow, isActive && styles.carouselRowDragging]}>
+                        <Pressable onPressIn={drag} hitSlop={8}>
+                          <Ionicons name="reorder-three" size={22} color={colors.textMuted} />
+                        </Pressable>
+                        <Image source={{ uri: s.imageUrl }} style={styles.carouselThumb} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.carouselLink} numberOfLines={1}>{s.name}</Text>
+                          <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                            <View style={styles.roleTag}>
+                              <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
+                            </View>
+                            {isPromoLive(s) && (
+                              <View style={styles.roleTag}>
+                                <Text style={styles.roleTagText}>Live offer</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                        <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
+                          <Text style={styles.editText}>edit</Text>
+                        </Pressable>
+                        <Pressable onPress={() => deleteSponsor(s)} hitSlop={8}>
+                          <Text style={styles.deleteText}>delete</Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  />
                 )}
-              />
             </NestableScrollContainer>
           </View>
         </View>
@@ -1880,6 +1965,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   carouselRowDragging: { opacity: 0.7 },
+  reorderArrows: { justifyContent: 'center', gap: 2 },
   carouselThumb: { width: 44, height: 44, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
   carouselLink: { flex: 1, fontSize: 12, color: colors.textSecondary },
   modeToggle: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, marginBottom: spacing.md },
