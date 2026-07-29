@@ -109,17 +109,21 @@ export interface CarouselItem {
   createdAt: any;
 }
 
-// What tapping a sponsor's card actually does — the URL itself is what
-// determines whether an app or a browser/maps app opens (iOS/Android
-// universal links handle that transparently), this only controls the CTA
-// label/icon shown so a moderator can set expectations correctly (e.g. a
-// boba shop's ordering app link vs. a restaurant with no app, just a map).
-export type SponsorLinkType = 'website' | 'app' | 'directions';
-
 // A small fixed set rather than freeform text, so the Sponsors tab can
 // group sponsors into clean horizontally-scrolling rows per category
 // instead of accumulating one-off category strings over time.
 export type SponsorCategory = 'food' | 'services' | 'other';
+
+// One button on a sponsor's detail view — label is fully custom (e.g.
+// "Order on the app", "View menu", "Get directions"), since the URL itself
+// already determines whether an app or a browser/maps app opens
+// (iOS/Android universal links handle that transparently). A sponsor can
+// have any number of these — a boba shop might link both their ordering
+// app and their Instagram, for instance.
+export interface SponsorLink {
+  label: string;
+  url: string;
+}
 
 // A sponsor shown on the Sponsors tab — moderator-managed, same
 // public-read/moderator-write trust level as posts and the carousel.
@@ -133,8 +137,7 @@ export interface Sponsor {
   // most of what a sponsor listing needs to communicate *is* this.
   description?: string;
   category?: SponsorCategory;
-  link?: string;
-  linkType?: SponsorLinkType;
+  links?: SponsorLink[];
   // A time-boxed offer ("BOGO this weekend!"), separate from the
   // evergreen `description` — a standing/year-round deal belongs in
   // description instead, since it never needs to appear/disappear.

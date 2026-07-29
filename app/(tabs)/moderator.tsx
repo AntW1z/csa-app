@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
-import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorLinkType, SponsorCategory } from '../../src/types';
+import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorCategory } from '../../src/types';
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
 import { formatEventTimeRange, isPromoLive } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
@@ -288,8 +288,7 @@ export default function ModeratorScreen() {
   const [sponsorImageUploading, setSponsorImageUploading] = useState(false);
   const [sponsorDescription, setSponsorDescription] = useState('');
   const [sponsorCategory, setSponsorCategory] = useState<SponsorCategory>('food');
-  const [sponsorLink, setSponsorLink] = useState('');
-  const [sponsorLinkType, setSponsorLinkType] = useState<SponsorLinkType>('website');
+  const [sponsorLinks, setSponsorLinks] = useState<{ label: string; url: string }[]>([{ label: '', url: '' }]);
   const [sponsorHasPromo, setSponsorHasPromo] = useState(false);
   const [sponsorPromoText, setSponsorPromoText] = useState('');
   const [sponsorPromoStartDate, setSponsorPromoStartDate] = useState<string | null>(null);
@@ -505,7 +504,7 @@ export default function ModeratorScreen() {
   const openNewSponsor = () => {
     setEditingSponsor(null);
     setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription('');
-    setSponsorCategory('food'); setSponsorLink(''); setSponsorLinkType('website');
+    setSponsorCategory('food'); setSponsorLinks([{ label: '', url: '' }]);
     setSponsorHasPromo(false); setSponsorPromoText('');
     setSponsorPromoStartDate(null); setSponsorPromoEndDate(null);
     setSponsorImageUploading(false);
@@ -519,8 +518,7 @@ export default function ModeratorScreen() {
     setSponsorImageUploading(false);
     setSponsorDescription(s.description ?? '');
     setSponsorCategory(s.category ?? 'food');
-    setSponsorLink(s.link ?? '');
-    setSponsorLinkType(s.linkType ?? 'website');
+    setSponsorLinks(s.links && s.links.length > 0 ? s.links : [{ label: '', url: '' }]);
     setSponsorHasPromo(!!s.promoText);
     setSponsorPromoText(s.promoText ?? '');
     setSponsorPromoStartDate(s.promoStartDate ?? null);
@@ -532,6 +530,14 @@ export default function ModeratorScreen() {
     setShowNewSponsor(false);
     setEditingSponsor(null);
   };
+
+  const updateSponsorLink = (index: number, field: 'label' | 'url', value: string) => {
+    setSponsorLinks((prev) => prev.map((l, i) => (i === index ? { ...l, [field]: value } : l)));
+  };
+
+  const addSponsorLink = () => setSponsorLinks((prev) => [...prev, { label: '', url: '' }]);
+
+  const removeSponsorLink = (index: number) => setSponsorLinks((prev) => prev.filter((_, i) => i !== index));
 
   // Once "Limited-time offer" is toggled on, all three fields are required
   // to save — this is what prevents ending up with promo text but no
@@ -550,12 +556,18 @@ export default function ModeratorScreen() {
       : editingSponsor
       ? { promoText: deleteField(), promoStartDate: deleteField(), promoEndDate: deleteField() }
       : {};
+    // Rows with no URL are just unused form rows, not real links. A label
+    // left blank falls back to "Visit" so the button never renders empty.
+    const validLinks = sponsorLinks
+      .map((l) => ({ label: l.label.trim() || 'Visit', url: l.url.trim() }))
+      .filter((l) => l.url);
+    const linksField = validLinks.length > 0 ? { links: validLinks } : editingSponsor ? { links: deleteField() } : {};
     const data = {
       name: sponsorName.trim(),
       imageUrl: sponsorImageUrl.trim(),
       category: sponsorCategory,
       ...(sponsorDescription.trim() ? { description: sponsorDescription.trim() } : {}),
-      ...(sponsorLink.trim() ? { link: sponsorLink.trim(), linkType: sponsorLinkType } : {}),
+      ...linksField,
       ...promoFields,
     };
     if (editingSponsor) {
@@ -1284,24 +1296,41 @@ export default function ModeratorScreen() {
                 multiline
               />
 
-              <TextInput style={styles.input} placeholder="Link (optional)" placeholderTextColor={colors.textMuted} autoCapitalize="none" value={sponsorLink} onChangeText={setSponsorLink} />
+              <Text style={styles.manageSectionLabel}>Links (optional)</Text>
               <Text style={styles.hint}>
-                What kind of link is it? This only changes the button label shown — the URL itself already opens
-                the sponsor's app instead of a browser automatically, if they support that.
+                Button text is up to you (e.g. "Order on the app", "View menu", "Get directions") — the URL
+                itself already opens their app instead of a browser automatically, if they support that.
               </Text>
-              <View style={styles.modeToggle}>
-                {(['website', 'app', 'directions'] as SponsorLinkType[]).map((t) => (
-                  <Pressable
-                    key={t}
-                    style={[styles.modeBtn, sponsorLinkType === t && styles.modeBtnActive]}
-                    onPress={() => setSponsorLinkType(t)}
-                  >
-                    <Text style={[styles.modeBtnText, sponsorLinkType === t && styles.modeBtnTextActive]}>
-                      {t === 'website' ? 'Website' : t === 'app' ? 'App' : 'Directions'}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+              {sponsorLinks.map((linkItem, index) => (
+                <View key={index} style={styles.sponsorLinkRow}>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Button text (e.g. Visit website)"
+                      placeholderTextColor={colors.textMuted}
+                      value={linkItem.label}
+                      onChangeText={(v) => updateSponsorLink(index, 'label', v)}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="URL"
+                      placeholderTextColor={colors.textMuted}
+                      autoCapitalize="none"
+                      value={linkItem.url}
+                      onChangeText={(v) => updateSponsorLink(index, 'url', v)}
+                    />
+                  </View>
+                  {sponsorLinks.length > 1 && (
+                    <Pressable onPress={() => removeSponsorLink(index)} hitSlop={8} style={styles.sponsorLinkRemove}>
+                      <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                    </Pressable>
+                  )}
+                </View>
+              ))}
+              <Pressable style={styles.addBtn} onPress={addSponsorLink}>
+                <Ionicons name="add-circle-outline" size={16} color={colors.red} />
+                <Text style={styles.addBtnText}>Add another link</Text>
+              </Pressable>
 
               <View style={styles.row}>
                 <Text style={styles.rowLabel}>Limited-time offer</Text>
@@ -1662,6 +1691,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   reminderPresetText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  sponsorLinkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  sponsorLinkRemove: { paddingTop: spacing.md },
   carouselRow: {
     flexDirection: 'row',
     alignItems: 'center',

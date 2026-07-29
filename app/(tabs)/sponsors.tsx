@@ -3,17 +3,11 @@ import { View, Text, Image, Pressable, ScrollView, Linking, StyleSheet } from 'r
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
-import { Sponsor, SponsorCategory, SponsorLinkType } from '../../src/types';
+import { Sponsor, SponsorCategory } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 import { isPromoLive } from '../../src/utils';
 
 const ROW_CARD_WIDTH = 150;
-
-const CTA: Record<SponsorLinkType, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  website: { label: 'Visit', icon: 'globe-outline' },
-  app: { label: 'Open App', icon: 'phone-portrait-outline' },
-  directions: { label: 'Directions', icon: 'navigate-outline' },
-};
 
 const CATEGORY_LABEL: Record<SponsorCategory, string> = {
   food: 'Food & Drink',
@@ -45,7 +39,7 @@ export default function SponsorsScreen() {
     items: sponsors.filter((s) => resolveCategory(s) === cat),
   })).filter((r) => r.items.length > 0);
 
-  const open = (s: Sponsor) => s.link && Linking.openURL(s.link);
+  const openLink = (url: string) => Linking.openURL(url);
 
   return (
     <View style={styles.container}>
@@ -117,12 +111,12 @@ export default function SponsorsScreen() {
 
                 {selected.description ? <Text style={styles.detailDescription}>{selected.description}</Text> : null}
 
-                {selected.link && (
-                  <Pressable style={styles.ctaBtn} onPress={() => open(selected)}>
-                    <Ionicons name={CTA[selected.linkType ?? 'website'].icon} size={16} color={colors.onAccent} />
-                    <Text style={styles.ctaBtnText}>{CTA[selected.linkType ?? 'website'].label}</Text>
+                {selected.links?.map((link, i) => (
+                  <Pressable key={i} style={styles.ctaBtn} onPress={() => openLink(link.url)}>
+                    <Ionicons name="open-outline" size={16} color={colors.onAccent} />
+                    <Text style={styles.ctaBtnText}>{link.label}</Text>
                   </Pressable>
-                )}
+                ))}
               </View>
             </ScrollView>
           </View>
