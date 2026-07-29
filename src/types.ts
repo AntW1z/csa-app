@@ -154,6 +154,8 @@ export interface Sponsor {
   description?: string;
   // 'information' kind only:
   category?: SponsorCategory;
+  // Shared by both kinds — an event can link out too (tickets, RSVP, the
+  // sponsor's own site), same as an information sponsor's CTA buttons.
   links?: SponsorLink[];
   // A time-boxed offer ("BOGO this weekend!"), separate from the
   // evergreen `description` — a standing/year-round deal belongs in

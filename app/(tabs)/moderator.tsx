@@ -588,6 +588,15 @@ export default function ModeratorScreen() {
   const saveSponsor = async () => {
     if (!canSaveSponsor) return;
 
+    // Rows with no URL are just unused form rows, not real links. A label
+    // left blank falls back to "Visit" so the button never renders empty.
+    // Shared across both kinds — an event can link out (tickets, RSVP,
+    // the sponsor's own page) same as an information sponsor can.
+    const validLinks = sponsorLinks
+      .map((l) => ({ label: l.label.trim() || 'Visit', url: l.url.trim() }))
+      .filter((l) => l.url);
+    const linksField = validLinks.length > 0 ? { links: validLinks } : editingSponsor ? { links: deleteField() } : {};
+
     let kindFields: Record<string, unknown>;
     if (sponsorKind === 'event') {
       kindFields = {
@@ -597,6 +606,7 @@ export default function ModeratorScreen() {
           : editingSponsor
           ? { linkedSponsorId: deleteField() }
           : {}),
+        ...linksField,
       };
     } else {
       // deleteField() only works against an existing doc (updateDoc) — for
@@ -607,12 +617,6 @@ export default function ModeratorScreen() {
         : editingSponsor
         ? { promoText: deleteField(), promoStartDate: deleteField(), promoEndDate: deleteField() }
         : {};
-      // Rows with no URL are just unused form rows, not real links. A label
-      // left blank falls back to "Visit" so the button never renders empty.
-      const validLinks = sponsorLinks
-        .map((l) => ({ label: l.label.trim() || 'Visit', url: l.url.trim() }))
-        .filter((l) => l.url);
-      const linksField = validLinks.length > 0 ? { links: validLinks } : editingSponsor ? { links: deleteField() } : {};
       kindFields = { category: sponsorCategory, ...linksField, ...promoFields };
     }
 
@@ -1584,6 +1588,41 @@ export default function ModeratorScreen() {
                       <Text style={styles.addBtnText}>Link a sponsor</Text>
                     </Pressable>
                   )}
+
+                  <Text style={styles.manageSectionLabel}>Links (optional)</Text>
+                  <Text style={styles.hint}>
+                    e.g. tickets, RSVP, or the sponsor's site — button text is up to you.
+                  </Text>
+                  {sponsorLinks.map((linkItem, index) => (
+                    <View key={index} style={styles.sponsorLinkRow}>
+                      <View style={{ flex: 1 }}>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Button text (e.g. Get tickets)"
+                          placeholderTextColor={colors.textMuted}
+                          value={linkItem.label}
+                          onChangeText={(v) => updateSponsorLink(index, 'label', v)}
+                        />
+                        <TextInput
+                          style={styles.input}
+                          placeholder="URL"
+                          placeholderTextColor={colors.textMuted}
+                          autoCapitalize="none"
+                          value={linkItem.url}
+                          onChangeText={(v) => updateSponsorLink(index, 'url', v)}
+                        />
+                      </View>
+                      {sponsorLinks.length > 1 && (
+                        <Pressable onPress={() => removeSponsorLink(index)} hitSlop={8} style={styles.sponsorLinkRemove}>
+                          <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                        </Pressable>
+                      )}
+                    </View>
+                  ))}
+                  <Pressable style={styles.addBtn} onPress={addSponsorLink}>
+                    <Ionicons name="add-circle-outline" size={16} color={colors.red} />
+                    <Text style={styles.addBtnText}>Add another link</Text>
+                  </Pressable>
                 </>
               )}
 
