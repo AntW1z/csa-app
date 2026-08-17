@@ -270,6 +270,8 @@ export default function ModeratorScreen() {
   const [clearTerm, setClearTerm] = useState<'year' | 'semester' | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showLogsPanel, setShowLogsPanel] = useState(false);
+  const [showAllAccountsPanel, setShowAllAccountsPanel] = useState(false);
+  const [accountSearch, setAccountSearch] = useState('');
   const [clearLogsStep, setClearLogsStep] = useState<'idle' | 'confirm'>('idle');
   const [managingMember, setManagingMember] = useState<UserProfile | null>(null);
   const [removeMemberStep, setRemoveMemberStep] = useState<'idle' | 'confirm'>('idle');
@@ -996,6 +998,19 @@ export default function ModeratorScreen() {
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
         )}
+
+        {profile?.role === 'admin' && (
+          <Pressable style={styles.memberMgmtCard} onPress={() => setShowAllAccountsPanel(true)}>
+            <View style={styles.memberMgmtIcon}>
+              <Ionicons name="people-circle-outline" size={18} color={colors.red} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.memberMgmtText}>All accounts</Text>
+              <Text style={styles.cardSubtitle}>{signedUpOnly.length} signed up, not a member</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+        )}
       </ScrollView>
 
       {showPostsPanel && (
@@ -1296,29 +1311,6 @@ export default function ModeratorScreen() {
                   {profile?.role === 'admin' && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
                 </Pressable>
               ))}
-
-              {profile?.role === 'admin' && (
-                <>
-                  <Text style={[styles.header, { marginTop: spacing.lg }]}>Signed up, not a member ({signedUpOnly.length})</Text>
-                  <Text style={styles.hint}>
-                    Everyone with an account who hasn't requested or been made a member — visible to admins only.
-                  </Text>
-                  {signedUpOnly.length === 0 && <Text style={styles.empty}>No other accounts yet.</Text>}
-                  {signedUpOnly.map((u) => (
-                    <View key={u.uid} style={styles.memberRow}>
-                      <Text style={styles.memberName} numberOfLines={1}>{u.displayName} · {u.email}</Text>
-                      {u.memberRequestStatus === 'pending' ? (
-                        <View style={styles.roleTag}>
-                          <Text style={styles.roleTagText}>pending</Text>
-                        </View>
-                      ) : null}
-                      <Text style={styles.signupDate}>
-                        {u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : ''}
-                      </Text>
-                    </View>
-                  ))}
-                </>
-              )}
 
               {profile?.role === 'admin' && (
                 <View style={styles.clearSection}>
@@ -1965,6 +1957,57 @@ export default function ModeratorScreen() {
                   )}
                 </View>
               )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {showAllAccountsPanel && (
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Pressable
+              style={styles.closeBtn}
+              onPress={() => { setShowAllAccountsPanel(false); setAccountSearch(''); }}
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.header}>All accounts ({signedUpOnly.length})</Text>
+              <Text style={styles.hint}>
+                Everyone with an account who hasn't requested or been made a member — separate from
+                Members so you're not scrolling past every signup just to manage actual members.
+              </Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Search by name or email"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                value={accountSearch}
+                onChangeText={setAccountSearch}
+              />
+              {(() => {
+                const q = accountSearch.trim().toLowerCase();
+                const filtered = q
+                  ? signedUpOnly.filter((u) => u.displayName?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))
+                  : signedUpOnly;
+                if (filtered.length === 0) {
+                  return <Text style={styles.empty}>{q ? `No accounts match "${accountSearch}".` : 'No other accounts yet.'}</Text>;
+                }
+                return filtered.map((u) => (
+                  <View key={u.uid} style={styles.memberRow}>
+                    <Text style={styles.memberName} numberOfLines={1}>{u.displayName} · {u.email}</Text>
+                    {u.memberRequestStatus === 'pending' ? (
+                      <View style={styles.roleTag}>
+                        <Text style={styles.roleTagText}>pending</Text>
+                      </View>
+                    ) : null}
+                    <Text style={styles.signupDate}>
+                      {u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : ''}
+                    </Text>
+                  </View>
+                ));
+              })()}
             </ScrollView>
           </View>
         </View>
