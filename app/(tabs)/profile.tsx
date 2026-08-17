@@ -10,6 +10,7 @@ import { auth, db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import { MembershipTerm } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
+import { getAuthErrorMessage } from '../../src/utils';
 
 const termLabel = (term?: MembershipTerm) => (term === 'year' ? 'Full Year' : term === 'semester' ? 'Semester' : null);
 
@@ -40,7 +41,7 @@ export default function ProfileScreen() {
           await signInWithEmailAndPassword(auth, email, password);
         }
       } catch (e: any) {
-        setError(e.message);
+        setError(getAuthErrorMessage(e.code));
       }
     };
 
@@ -116,7 +117,7 @@ export default function ProfileScreen() {
       if (err.code === 'auth/requires-recent-login') {
         setDeleteStep('reauth');
       } else {
-        setDeleteError(err.message ?? 'Something went wrong — try again.');
+        setDeleteError(getAuthErrorMessage(err.code));
         skipAutoCreateProfile.current = false;
       }
     } finally {
@@ -135,7 +136,7 @@ export default function ProfileScreen() {
       // hit the recent-login error — just the auth account is left.
       await deleteUser(firebaseUser);
     } catch (err: any) {
-      setDeleteError(err.code === 'auth/invalid-credential' ? 'Incorrect password.' : (err.message ?? 'Something went wrong — try again.'));
+      setDeleteError(err.code === 'auth/invalid-credential' ? 'Incorrect password.' : getAuthErrorMessage(err.code));
     } finally {
       setDeleting(false);
     }

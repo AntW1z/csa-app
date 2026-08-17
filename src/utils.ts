@@ -1,3 +1,35 @@
+// Firebase Auth's own error.message is developer-facing junk like
+// "Firebase: Error (auth/invalid-credential)." — this maps the codes users
+// can actually hit in sign-in/sign-up/reauth to plain-language copy.
+// Note: modern Firebase Auth deliberately returns the same
+// auth/invalid-credential code for both "wrong password" and "no account
+// with that email" (email enumeration protection) — there's no way to
+// tell those apart client-side, so both get one combined message.
+export function getAuthErrorMessage(code?: string): string {
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Incorrect email or password.';
+    case 'auth/invalid-email':
+      return 'Enter a valid email address.';
+    case 'auth/missing-password':
+      return 'Enter a password.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts — please wait a moment and try again.';
+    case 'auth/user-disabled':
+      return 'This account has been disabled. Contact a moderator for help.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists — try signing in instead.';
+    case 'auth/weak-password':
+      return 'Password should be at least 6 characters.';
+    case 'auth/network-request-failed':
+      return 'Network error — check your connection and try again.';
+    default:
+      return 'Something went wrong. Please try again.';
+  }
+}
+
 // Event times are stored as ISO strings (see moderator's date/time picker),
 // which sort correctly as plain strings — that's why Calendar's Firestore
 // query can `orderBy('dateTime')` without a separate sort field. `allDay`
