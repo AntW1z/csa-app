@@ -179,7 +179,7 @@ export default function SponsorsScreen() {
 
                 {selected.links?.map((link, i) => (
                   <Pressable key={i} style={styles.ctaBtn} onPress={() => openLink(link.url)}>
-                    <Ionicons name="open-outline" size={16} color={colors.onAccent} />
+                    <Ionicons name="open-outline" size={16} color={colors.onAccent} style={styles.ctaBtnIcon} />
                     <Text style={styles.ctaBtnText}>{link.label}</Text>
                   </Pressable>
                 ))}
@@ -297,13 +297,16 @@ const styles = StyleSheet.create({
   detailDescription: { fontSize: 14, color: colors.textSecondary, lineHeight: 21 },
   ctaBtn: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'flex-start',
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
     gap: spacing.xs,
     backgroundColor: colors.red,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     marginTop: spacing.sm,
   },
-  ctaBtnText: { color: colors.onAccent, fontWeight: '700', fontSize: 14 },
+  ctaBtnIcon: { marginTop: 2 },
+  ctaBtnText: { flexShrink: 1, color: colors.onAccent, fontWeight: '700', fontSize: 14 },
 });
