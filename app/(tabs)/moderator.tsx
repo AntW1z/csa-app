@@ -1265,6 +1265,49 @@ export default function ModeratorScreen() {
                 </View>
               </View>
 
+              {profile?.role === 'admin' && (
+                <TextInput
+                  style={styles.input}
+                  placeholder="Search everyone by name or email"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none"
+                  value={accountSearch}
+                  onChangeText={setAccountSearch}
+                />
+              )}
+
+              {profile?.role === 'admin' && accountSearch.trim() ? (
+                (() => {
+                  const q = accountSearch.trim().toLowerCase();
+                  const everyone = [...members, ...signedUpOnly];
+                  const filtered = everyone.filter((u) => u.displayName?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
+                  if (filtered.length === 0) {
+                    return <Text style={styles.empty}>No accounts match "{accountSearch}".</Text>;
+                  }
+                  return filtered.map((u) => (
+                    <Pressable
+                      key={u.uid}
+                      style={styles.memberRow}
+                      onPress={() => u.role !== 'user' && openManageMember(u)}
+                    >
+                      <Text style={styles.memberName} numberOfLines={1}>{u.displayName} · {u.email}</Text>
+                      <View style={styles.roleTag}>
+                        <Text style={styles.roleTagText}>
+                          {u.role === 'moderator' || u.role === 'admin'
+                            ? u.role
+                            : u.role === 'member'
+                            ? (u.membershipTerm === 'year' ? 'Year' : u.membershipTerm === 'semester' ? 'Semester' : 'Member')
+                            : u.memberRequestStatus === 'pending'
+                            ? 'pending'
+                            : 'not a member'}
+                        </Text>
+                      </View>
+                      {u.role !== 'user' && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
+                    </Pressable>
+                  ));
+                })()
+              ) : (
+                <>
               <Text style={styles.header}>Moderators & admins</Text>
               {members.filter((m) => m.role === 'moderator' || m.role === 'admin').length === 0 && (
                 <Text style={styles.empty}>None yet.</Text>
@@ -1349,7 +1392,7 @@ export default function ModeratorScreen() {
               {profile?.role === 'admin' && (
                 <Pressable
                   style={styles.expandRow}
-                  onPress={() => { setShowNonMemberEmails((v) => !v); setAccountSearch(''); }}
+                  onPress={() => setShowNonMemberEmails((v) => !v)}
                 >
                   <Text style={styles.expandRowText}>
                     {showNonMemberEmails ? 'Hide' : 'View'} all non-member emails ({signedUpOnly.length})
@@ -1359,37 +1402,24 @@ export default function ModeratorScreen() {
               )}
 
               {profile?.role === 'admin' && showNonMemberEmails && (
-                <>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Search by name or email"
-                    placeholderTextColor={colors.textMuted}
-                    autoCapitalize="none"
-                    value={accountSearch}
-                    onChangeText={setAccountSearch}
-                  />
-                  {(() => {
-                    const q = accountSearch.trim().toLowerCase();
-                    const filtered = q
-                      ? signedUpOnly.filter((u) => u.displayName?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))
-                      : signedUpOnly;
-                    if (filtered.length === 0) {
-                      return <Text style={styles.empty}>{q ? `No accounts match "${accountSearch}".` : 'No other accounts yet.'}</Text>;
-                    }
-                    return filtered.map((u) => (
-                      <View key={u.uid} style={styles.memberRow}>
-                        <Text style={styles.memberName} numberOfLines={1}>{u.displayName} · {u.email}</Text>
-                        {u.memberRequestStatus === 'pending' ? (
-                          <View style={styles.roleTag}>
-                            <Text style={styles.roleTagText}>pending</Text>
-                          </View>
-                        ) : null}
-                        <Text style={styles.signupDate}>
-                          {u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : ''}
-                        </Text>
-                      </View>
-                    ));
-                  })()}
+                signedUpOnly.length === 0 ? (
+                  <Text style={styles.empty}>No other accounts yet.</Text>
+                ) : (
+                  signedUpOnly.map((u) => (
+                    <View key={u.uid} style={styles.memberRow}>
+                      <Text style={styles.memberName} numberOfLines={1}>{u.displayName} · {u.email}</Text>
+                      {u.memberRequestStatus === 'pending' ? (
+                        <View style={styles.roleTag}>
+                          <Text style={styles.roleTagText}>pending</Text>
+                        </View>
+                      ) : null}
+                      <Text style={styles.signupDate}>
+                        {u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : ''}
+                      </Text>
+                    </View>
+                  ))
+                )
+              )}
                 </>
               )}
             </ScrollView>
