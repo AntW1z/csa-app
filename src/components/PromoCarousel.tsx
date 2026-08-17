@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Image, Pressable, FlatList, StyleSheet, Dimensions, Animated } from 'react-native';
+import { View, Image, Pressable, FlatList, StyleSheet, Dimensions } from 'react-native';
 import { CarouselItem } from '../types';
 import { colors, spacing } from '../theme';
 
@@ -16,12 +16,6 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
   // the auto-advance target both stay in this space so nothing else needs
   // to know the padding exists.
   const [activeIndex, setActiveIndex] = useState(0);
-  // Drives the currently-active progress bar's fill — a single shared
-  // value, not one per item, since only ever one segment is animating at
-  // a time. Segments before/after activeIndex just render statically full
-  // or empty (see the bars below), so this only needs to represent "how
-  // far through the current one are we."
-  const progress = useRef(new Animated.Value(0)).current;
 
   // A clone of the last item up front and the first item at the end, so a
   // manual swipe past either edge lands on a look-alike neighbor instead of
@@ -44,13 +38,6 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
   // or this timer, so there's a single source of truth for it.
   useEffect(() => {
     if (items.length < 2) return;
-    progress.setValue(0);
-    const fill = Animated.timing(progress, {
-      toValue: 1,
-      duration: AUTO_ADVANCE_MS,
-      useNativeDriver: false, // animating width, which the native driver can't handle
-    });
-    fill.start();
     const timer = setTimeout(() => {
       // Always just one padded slot forward — when that's the trailing
       // clone of the first item, onMomentumScrollEnd's existing wrap
@@ -58,7 +45,7 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
       // through the clone instead of jumping backward across the list.
       listRef.current?.scrollToIndex({ index: activeIndex + 2, animated: true });
     }, AUTO_ADVANCE_MS);
-    return () => { clearTimeout(timer); fill.stop(); };
+    return () => clearTimeout(timer);
   }, [items.length, activeIndex]);
 
   if (items.length === 0) return null;
@@ -98,18 +85,9 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
         )}
       />
       {items.length > 1 && (
-        <View style={styles.bars}>
+        <View style={styles.dots}>
           {items.map((item, i) => (
-            <View key={item.id} style={styles.barTrack}>
-              <Animated.View
-                style={[
-                  styles.barFill,
-                  i < activeIndex && { width: '100%' },
-                  i > activeIndex && { width: '0%' },
-                  i === activeIndex && { width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
-                ]}
-              />
-            </View>
+            <View key={item.id} style={[styles.dot, i === activeIndex && styles.dotActive]} />
           ))}
         </View>
       )}
@@ -120,20 +98,14 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
 const styles = StyleSheet.create({
   wrap: { width: '100%', height: HEIGHT },
   image: { width: SCREEN_WIDTH, height: HEIGHT, backgroundColor: colors.surfaceMuted },
-  bars: {
+  dots: {
     position: 'absolute',
     bottom: spacing.sm,
-    left: spacing.md,
-    right: spacing.md,
+    width: '100%',
     flexDirection: 'row',
-    gap: 4,
+    justifyContent: 'center',
+    gap: 6,
   },
-  barTrack: {
-    flex: 1,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: 'rgba(255,255,255,0.4)',
-    overflow: 'hidden',
-  },
-  barFill: { height: '100%', backgroundColor: colors.onAccent },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.6)' },
+  dotActive: { width: 16, backgroundColor: colors.onAccent },
 });
