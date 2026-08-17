@@ -6,6 +6,7 @@ import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestor
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import PostCard from '../../src/components/PostCard';
+import PostDetailModal from '../../src/components/PostDetailModal';
 import { Post } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 import { getEventWindow, toDateString, formatEventTimeRange } from '../../src/utils';
@@ -26,7 +27,14 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [visibleMonth, setVisibleMonth] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState('');
+  const [detailPost, setDetailPost] = useState<Post | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
   const isMemberOrAbove = !!profile && profile.role !== 'user';
+
+  const openDetail = (post: Post) => {
+    setDetailPost(post);
+    setShowDetail(true);
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'posts'), where('type', '==', 'event'), orderBy('dateTime', 'asc'));
@@ -133,13 +141,17 @@ export default function CalendarScreen() {
               contentContainerStyle={styles.list}
               renderItem={({ item }) => (
                 <View style={[styles.cell, { width: `${100 / columns}%` }]}>
-                  <PostCard post={item} />
+                  <PostCard post={item} onPress={() => openDetail(item)} />
                 </View>
               )}
               ListEmptyComponent={<Text style={styles.empty}>No events on this day.</Text>}
             />
           )}
         </>
+      )}
+
+      {detailPost && (
+        <PostDetailModal post={detailPost} visible={showDetail} onClose={() => setShowDetail(false)} />
       )}
     </View>
   );

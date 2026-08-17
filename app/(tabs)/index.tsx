@@ -115,7 +115,7 @@ export default function Home() {
             </Pressable>
           </View>
           <Text style={styles.sectionLabel}>This week</Text>
-          <PostGrid posts={posts} />
+          <PostGrid posts={posts} onPressPost={(post) => { setDetailPost(post); setShowDetail(true); }} />
           {posts.length === 0 && <Text style={styles.empty}>Nothing happening this week.</Text>}
         </View>
       </ScrollView>

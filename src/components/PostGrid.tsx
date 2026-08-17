@@ -12,7 +12,7 @@ function columnsForWidth(width: number) {
   return 1;
 }
 
-export default function PostGrid({ posts }: { posts: Post[] }) {
+export default function PostGrid({ posts, onPressPost }: { posts: Post[]; onPressPost: (post: Post) => void }) {
   const { width } = useWindowDimensions();
   const columns = columnsForWidth(width);
 
@@ -20,7 +20,7 @@ export default function PostGrid({ posts }: { posts: Post[] }) {
     <View style={styles.grid}>
       {posts.map((post) => (
         <View key={post.id} style={[styles.cell, { width: `${100 / columns}%` }]}>
-          <PostCard post={post} />
+          <PostCard post={post} onPress={() => onPressPost(post)} />
         </View>
       ))}
     </View>

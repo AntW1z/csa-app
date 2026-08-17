@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Image, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Image, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Post } from '../types';
 import { colors, radius, spacing, shadow, tagStyle } from '../theme';
@@ -19,57 +19,72 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
   const time = formatEventTimeRange(post.dateTime, post.endDateTime, post.allDay);
   const tag = tagStyle[post.type];
 
+  if (!visible) return null;
+
+  // A plain absolute-positioned overlay, not RN's <Modal> — Modal's
+  // transparent presentation intercepts touch handling in ways that broke
+  // ScrollView's drag-to-scroll here (long descriptions got stuck
+  // un-scrollable), the same class of issue documented on the date picker
+  // fields elsewhere in this app. This overlay pattern (used by the
+  // Sponsors detail popup and every panel in Manage) scrolls correctly.
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      {/* Tapping the dimmed backdrop closes the popup; the inner Pressable
-          stops that tap from bubbling up when it lands on the card itself. */}
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.detailCard} onPress={(e) => e.stopPropagation()}>
-          <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={8}>
-            <Ionicons name="close" size={20} color={colors.textPrimary} />
-          </Pressable>
-          <ScrollView>
-            {post.imageUrl ? (
-              // Full image, not cropped — sized to its real aspect ratio
-              // once known so there's no cover-crop or awkward letterboxing.
-              // The wrapping View explicitly centers it, since resizeMode
-              // "contain" alone doesn't reliably center the rendered box
-              // on every platform.
-              <View style={styles.detailImageWrap}>
-                <Image
-                  source={{ uri: post.imageUrl }}
-                  style={[styles.detailImage, imageAspect ? { width: '100%', height: undefined, aspectRatio: imageAspect } : null]}
-                  resizeMode="contain"
-                  onLoad={(e) => {
-                    // Native (iOS/Android) reports size via nativeEvent.source;
-                    // React Native Web reports it via the underlying <img> at
-                    // nativeEvent.target instead — read whichever is present.
-                    const native = e.nativeEvent as any;
-                    const width = native.source?.width ?? native.target?.naturalWidth;
-                    const height = native.source?.height ?? native.target?.naturalHeight;
-                    if (width && height) setImageAspect(width / height);
-                  }}
-                />
-              </View>
-            ) : null}
-            <View style={styles.detailBody}>
-              <View style={[styles.tag, { backgroundColor: tag.bg }]}>
-                <Text style={[styles.tagText, { color: tag.text }]}>{TAG_LABEL[post.type]}</Text>
-              </View>
-              <Text style={styles.detailTitle}>{post.title}</Text>
-              {time ? <Text style={styles.meta}>{time}</Text> : null}
-              {post.locationText ? <Text style={styles.meta}>{post.locationText}</Text> : null}
-              {post.description ? <Text style={styles.description}>{post.description}</Text> : null}
-            </View>
-          </ScrollView>
+    // Tapping the dimmed backdrop closes the popup; the inner Pressable
+    // stops that tap from bubbling up when it lands on the card itself.
+    <Pressable style={styles.overlay} onPress={onClose}>
+      <Pressable style={styles.detailCard} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={8}>
+          <Ionicons name="close" size={20} color={colors.textPrimary} />
         </Pressable>
+        <ScrollView>
+          {post.imageUrl ? (
+            // Full image, not cropped — sized to its real aspect ratio
+            // once known so there's no cover-crop or awkward letterboxing.
+            // The wrapping View explicitly centers it, since resizeMode
+            // "contain" alone doesn't reliably center the rendered box
+            // on every platform.
+            <View style={styles.detailImageWrap}>
+              <Image
+                source={{ uri: post.imageUrl }}
+                style={[styles.detailImage, imageAspect ? { width: '100%', height: undefined, aspectRatio: imageAspect } : null]}
+                resizeMode="contain"
+                onLoad={(e) => {
+                  // Native (iOS/Android) reports size via nativeEvent.source;
+                  // React Native Web reports it via the underlying <img> at
+                  // nativeEvent.target instead — read whichever is present.
+                  const native = e.nativeEvent as any;
+                  const width = native.source?.width ?? native.target?.naturalWidth;
+                  const height = native.source?.height ?? native.target?.naturalHeight;
+                  if (width && height) setImageAspect(width / height);
+                }}
+              />
+            </View>
+          ) : null}
+          <View style={styles.detailBody}>
+            <View style={[styles.tag, { backgroundColor: tag.bg }]}>
+              <Text style={[styles.tagText, { color: tag.text }]}>{TAG_LABEL[post.type]}</Text>
+            </View>
+            <Text style={styles.detailTitle}>{post.title}</Text>
+            {time ? <Text style={styles.meta}>{time}</Text> : null}
+            {post.locationText ? <Text style={styles.meta}>{post.locationText}</Text> : null}
+            {post.description ? <Text style={styles.description}>{post.description}</Text> : null}
+          </View>
+        </ScrollView>
       </Pressable>
-    </Modal>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.xl },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.overlay,
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
   detailCard: { backgroundColor: colors.surface, borderRadius: radius.lg, overflow: 'hidden', maxHeight: '85%', ...shadow.card },
   closeBtn: {
     position: 'absolute',
