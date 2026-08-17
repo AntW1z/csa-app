@@ -264,6 +264,7 @@ export default function ModeratorScreen() {
   const [showPendingPanel, setShowPendingPanel] = useState(false);
   const [showPostsPanel, setShowPostsPanel] = useState(false);
   const [members, setMembers] = useState<UserProfile[]>([]);
+  const [signedUpOnly, setSignedUpOnly] = useState<UserProfile[]>([]);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const [clearStep, setClearStep] = useState<'idle' | 'choose' | 'confirm'>('idle');
   const [clearTerm, setClearTerm] = useState<'year' | 'semester' | null>(null);
@@ -324,6 +325,19 @@ export default function ModeratorScreen() {
       (err) => console.warn('members listener error', err)
     );
   }, [profile?.uid]);
+
+  // Everyone who's created an account but never became a member — admin-only
+  // visibility, since moderators only need to act on members/pending
+  // requests, not audit every signup.
+  useEffect(() => {
+    if (profile?.role !== 'admin') return;
+    const q = query(collection(db, 'users'), where('role', '==', 'user'));
+    return onSnapshot(
+      q,
+      (snap) => setSignedUpOnly(snap.docs.map((d) => d.data() as UserProfile)),
+      (err) => console.warn('signed-up-only listener error', err)
+    );
+  }, [profile?.uid, profile?.role]);
 
   useEffect(() => {
     return onSnapshot(collection(db, 'posts'), (snap) =>
@@ -1284,6 +1298,29 @@ export default function ModeratorScreen() {
               ))}
 
               {profile?.role === 'admin' && (
+                <>
+                  <Text style={[styles.header, { marginTop: spacing.lg }]}>Signed up, not a member ({signedUpOnly.length})</Text>
+                  <Text style={styles.hint}>
+                    Everyone with an account who hasn't requested or been made a member — visible to admins only.
+                  </Text>
+                  {signedUpOnly.length === 0 && <Text style={styles.empty}>No other accounts yet.</Text>}
+                  {signedUpOnly.map((u) => (
+                    <View key={u.uid} style={styles.memberRow}>
+                      <Text style={styles.memberName} numberOfLines={1}>{u.displayName} · {u.email}</Text>
+                      {u.memberRequestStatus === 'pending' ? (
+                        <View style={styles.roleTag}>
+                          <Text style={styles.roleTagText}>pending</Text>
+                        </View>
+                      ) : null}
+                      <Text style={styles.signupDate}>
+                        {u.createdAt?.toDate ? u.createdAt.toDate().toLocaleDateString() : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {profile?.role === 'admin' && (
                 <View style={styles.clearSection}>
                   <Text style={styles.header}>Clear membership</Text>
 
@@ -1961,6 +1998,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   memberName: { flex: 1, fontSize: 13, color: colors.textPrimary },
+  signupDate: { fontSize: 11, color: colors.textMuted },
   roleTag: { backgroundColor: colors.neutralSoft, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   roleTagText: { fontSize: 10, fontWeight: '700', color: colors.neutralSoftText, textTransform: 'uppercase' },
   logRow: {
