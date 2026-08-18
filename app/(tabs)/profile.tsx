@@ -174,7 +174,6 @@ export default function ProfileScreen() {
         submittedByUid: profile.uid,
         submittedByName: profile.displayName,
         submittedByEmail: profile.email,
-        status: 'new',
         createdAt: serverTimestamp(),
       });
       setFeedbackMessage('');

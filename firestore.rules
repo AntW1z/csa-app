@@ -75,12 +75,13 @@ service cloud.firestore {
 
     // Bug reports/suggestions from the "What is CSA?" popup in Profile.
     // Anyone signed in can submit one (and must submit it as themselves,
-    // not spoof another uid), but only moderators can read the list or
-    // mark one reviewed — this isn't public content like posts/sponsors.
+    // not spoof another uid), but only moderators can read the list.
+    // Resolving one deletes it (Manage > Feedback) rather than editing a
+    // status field, hence no update path.
     match /feedback/{feedbackId} {
       allow read: if isModerator();
       allow create: if request.auth != null && request.resource.data.submittedByUid == request.auth.uid;
-      allow update: if isModerator();
+      allow update: if false;
       allow delete: if isModerator();
     }
   }

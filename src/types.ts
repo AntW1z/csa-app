@@ -101,13 +101,15 @@ export interface PushMessage {
 // A bug report or suggestion submitted from the "What is CSA?" info popup
 // in Profile — visible to every moderator (not admin-only), since triaging
 // these is routine moderator work rather than sensitive account data.
+// Everything in the collection is implicitly unresolved — resolving one
+// deletes it (see Manage > Feedback) rather than just flagging it, so
+// nothing ever needs a status field to track.
 export interface Feedback {
   id: string;
   message: string;
   submittedByUid: string;
   submittedByName: string;
   submittedByEmail: string;
-  status: 'new' | 'reviewed';
   createdAt: any;
 }
 

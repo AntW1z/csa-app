@@ -271,6 +271,7 @@ export default function ModeratorScreen() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
+  const [openFeedback, setOpenFeedback] = useState<Feedback | null>(null);
   const [showLogsPanel, setShowLogsPanel] = useState(false);
   const [showNonMemberEmails, setShowNonMemberEmails] = useState(false);
   const [accountSearch, setAccountSearch] = useState('');
@@ -394,8 +395,10 @@ export default function ModeratorScreen() {
     );
   }, [profile?.uid]);
 
-  const toggleFeedbackStatus = (item: Feedback) => {
-    updateDoc(doc(db, 'feedback', item.id), { status: item.status === 'new' ? 'reviewed' : 'new' });
+  const resolveFeedback = async (item: Feedback) => {
+    await deleteDoc(doc(db, 'feedback', item.id));
+    logAction(`Resolved feedback from ${item.submittedByName}`);
+    setOpenFeedback(null);
   };
 
   // Fire-and-forget audit trail — every moderation action writes one of
@@ -1024,14 +1027,11 @@ export default function ModeratorScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.memberMgmtText}>Feedback</Text>
-            <Text style={styles.cardSubtitle}>
-              {feedback.length} submitted
-              {feedback.filter((f) => f.status === 'new').length > 0 ? ` · ${feedback.filter((f) => f.status === 'new').length} new` : ''}
-            </Text>
+            <Text style={styles.cardSubtitle}>{feedback.length} unresolved</Text>
           </View>
-          {feedback.filter((f) => f.status === 'new').length > 0 && (
+          {feedback.length > 0 && (
             <View style={styles.pendingBadge}>
-              <Text style={styles.pendingBadgeText}>{feedback.filter((f) => f.status === 'new').length}</Text>
+              <Text style={styles.pendingBadgeText}>{feedback.length}</Text>
             </View>
           )}
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -2077,22 +2077,38 @@ export default function ModeratorScreen() {
               </Text>
               {feedback.length === 0 && <Text style={styles.empty}>Nothing submitted yet.</Text>}
               {feedback.map((item) => (
-                <View key={item.id} style={styles.logRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
-                    <Text style={[styles.logMessage, { flex: 1 }]}>{item.message}</Text>
-                    <View style={[styles.roleTag, item.status === 'new' && { backgroundColor: colors.redSoft }]}>
-                      <Text style={[styles.roleTagText, item.status === 'new' && { color: colors.redSoftText }]}>{item.status}</Text>
-                    </View>
+                <Pressable key={item.id} style={[styles.logRow, { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }]} onPress={() => setOpenFeedback(item)}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.logMessage} numberOfLines={2}>{item.message}</Text>
+                    <Text style={styles.logMeta}>
+                      {item.submittedByName}
+                      {item.createdAt?.toDate ? ` · ${item.createdAt.toDate().toLocaleString()}` : ''}
+                    </Text>
                   </View>
-                  <Text style={styles.logMeta}>
-                    {item.submittedByName} · {item.submittedByEmail}
-                    {item.createdAt?.toDate ? ` · ${item.createdAt.toDate().toLocaleString()}` : ''}
-                  </Text>
-                  <Pressable onPress={() => toggleFeedbackStatus(item)} hitSlop={8} style={{ marginTop: spacing.xs }}>
-                    <Text style={styles.editText}>{item.status === 'new' ? 'Mark reviewed' : 'Mark new'}</Text>
-                  </Pressable>
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                </Pressable>
               ))}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {openFeedback && (
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Pressable style={styles.closeBtn} onPress={() => setOpenFeedback(null)} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+            <ScrollView>
+              <Text style={styles.header}>Feedback</Text>
+              <Text style={[styles.hint, { paddingHorizontal: 0, marginBottom: spacing.md }]}>
+                {openFeedback.submittedByName} · {openFeedback.submittedByEmail}
+                {openFeedback.createdAt?.toDate ? ` · ${openFeedback.createdAt.toDate().toLocaleString()}` : ''}
+              </Text>
+              <Text style={styles.logMessage}>{openFeedback.message}</Text>
+              <Pressable style={[styles.button, { marginTop: spacing.lg }]} onPress={() => resolveFeedback(openFeedback)}>
+                <Text style={styles.buttonText}>Mark resolved</Text>
+              </Pressable>
             </ScrollView>
           </View>
         </View>
