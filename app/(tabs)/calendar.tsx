@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, FlatList, useWindowDimensions, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Calendar, DateData } from 'react-native-calendars';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import PostCard from '../../src/components/PostCard';
 import PostDetailModal from '../../src/components/PostDetailModal';
-import { Post } from '../../src/types';
+import { Post, PostType } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
-import { getEventWindow, toDateString, formatEventTimeRange } from '../../src/utils';
+import { getEventWindow, formatEventTimeRange } from '../../src/utils';
 
 // Single column on phones, more as the viewport widens (mainly for web,
 // where one card stretched edge-to-edge on a desktop window looks broken).
@@ -19,14 +18,45 @@ function columnsForWidth(width: number) {
   return 1;
 }
 
-export default function CalendarScreen() {
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+type DateFilter = 'upcoming' | 'week' | 'month' | 'all';
+type TypeFilter = 'all' | PostType;
+
+const DATE_FILTERS: { key: DateFilter; label: string }[] = [
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'week', label: 'This week' },
+  { key: 'month', label: 'This month' },
+  { key: 'all', label: 'All' },
+];
+
+const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'event', label: 'Events' },
+  { key: 'announcement', label: 'Announcements' },
+  { key: 'collab', label: 'Collabs' },
+];
+
+// Posts with no dateTime (evergreen announcements, mainly) always pass —
+// a date filter narrowing to "this week" shouldn't hide something that
+// was never dated in the first place.
+function matchesDateFilter(post: Post, filter: DateFilter, now: Date): boolean {
+  const window = getEventWindow(post);
+  if (!window || filter === 'all') return true;
+  if (filter === 'upcoming') return window.end >= now;
+  if (filter === 'week') return window.end >= now && window.start <= new Date(now.getTime() + WEEK_MS);
+  return window.end >= now && window.start <= new Date(now.getTime() + MONTH_MS);
+}
+
+export default function EventsScreen() {
   const { profile } = useAuth();
   const { width } = useWindowDimensions();
   const columns = columnsForWidth(width);
-  const [events, setEvents] = useState<Post[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [visibleMonth, setVisibleMonth] = useState<string | undefined>(undefined);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [search, setSearch] = useState('');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('upcoming');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [detailPost, setDetailPost] = useState<Post | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const isMemberOrAbove = !!profile && profile.role !== 'user';
@@ -36,56 +66,34 @@ export default function CalendarScreen() {
     setShowDetail(true);
   };
 
+  // Every post type lives here now, not just "event" — Home dropped its
+  // general feed in favor of the full-bleed carousel, so this is the only
+  // place announcements/collabs are browsable at all, alongside events.
   useEffect(() => {
-    const q = query(collection(db, 'posts'), where('type', '==', 'event'), orderBy('dateTime', 'asc'));
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
-      setEvents(all.filter((p) => p.visibility === 'everyone' || isMemberOrAbove));
+      setPosts(all.filter((p) => p.visibility === 'everyone' || isMemberOrAbove));
     });
     return unsub;
   }, [isMemberOrAbove]);
 
-  // A dot on every day an event covers, plus a highlight on whichever day
-  // is currently selected as the filter.
-  const markedDates: Record<string, any> = (() => {
-    const marks: Record<string, any> = {};
-    events.forEach((event) => {
-      const window = getEventWindow(event);
-      if (!window) return;
-      const cur = new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate());
-      const last = new Date(window.end.getFullYear(), window.end.getMonth(), window.end.getDate());
-      while (cur <= last) {
-        const dStr = toDateString(cur);
-        marks[dStr] = { ...marks[dStr], marked: true, dotColor: colors.red };
-        cur.setDate(cur.getDate() + 1);
-      }
-    });
-    if (selectedDate) {
-      marks[selectedDate] = { ...marks[selectedDate], selected: true, selectedColor: colors.red };
-    }
-    return marks;
-  })();
-
-  // No date selected: just show the calendar, no list underneath.
-  const visibleEvents = selectedDate
-    ? events.filter((event) => {
-        const window = getEventWindow(event);
-        if (!window) return false;
-        return toDateString(window.start) <= selectedDate && selectedDate <= toDateString(window.end);
-      })
-    : [];
+  const now = new Date();
+  const filtered = posts.filter(
+    (p) => (typeFilter === 'all' || p.type === typeFilter) && matchesDateFilter(p, dateFilter, now)
+  );
+  // Dated posts sort soonest-first; undated ones (no dateTime) trail behind
+  // in their already-fetched createdAt-desc order, since there's no date
+  // to sort them by.
+  const dated = filtered.filter((p) => p.dateTime).sort((a, b) => new Date(a.dateTime!).getTime() - new Date(b.dateTime!).getTime());
+  const undated = filtered.filter((p) => !p.dateTime);
+  const visiblePosts = [...dated, ...undated];
 
   const query_ = search.trim().toLowerCase();
-  const searchResults = query_ ? events.filter((e) => e.title.toLowerCase().includes(query_)) : [];
-
-  const jumpToEvent = (event: Post) => {
-    const window = getEventWindow(event);
-    if (!window) return;
-    const dStr = toDateString(window.start);
-    setSelectedDate(dStr);
-    setVisibleMonth(dStr);
-    setSearch('');
-  };
+  // Search operates within the current filters rather than the full list,
+  // so "Announcements" + a search term compose instead of the search
+  // silently ignoring the type/date filters already chosen.
+  const searchResults = query_ ? visiblePosts.filter((p) => p.title.toLowerCase().includes(query_)) : [];
 
   return (
     <View style={styles.container}>
@@ -95,7 +103,7 @@ export default function CalendarScreen() {
         <Ionicons name="search-outline" size={16} color={colors.textMuted} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search events by title"
+          placeholder="Search by title"
           placeholderTextColor={colors.textMuted}
           value={search}
           onChangeText={setSearch}
@@ -107,47 +115,57 @@ export default function CalendarScreen() {
         ) : null}
       </View>
 
+      <View style={styles.filterRow}>
+        {DATE_FILTERS.map((f) => (
+          <Pressable
+            key={f.key}
+            style={[styles.filterChip, dateFilter === f.key && styles.filterChipActive]}
+            onPress={() => setDateFilter(f.key)}
+          >
+            <Text style={[styles.filterChipText, dateFilter === f.key && styles.filterChipTextActive]}>{f.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.filterRow}>
+        {TYPE_FILTERS.map((f) => (
+          <Pressable
+            key={f.key}
+            style={[styles.filterChip, typeFilter === f.key && styles.filterChipActive]}
+            onPress={() => setTypeFilter(f.key)}
+          >
+            <Text style={[styles.filterChipText, typeFilter === f.key && styles.filterChipTextActive]}>{f.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       {query_ ? (
         <FlatList
           data={searchResults}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <Pressable style={styles.resultRow} onPress={() => jumpToEvent(item)}>
+            <Pressable style={styles.resultRow} onPress={() => openDetail(item)}>
               <Text style={styles.resultTitle} numberOfLines={1}>{item.title}</Text>
               <Text style={styles.resultMeta}>{formatEventTimeRange(item.dateTime, item.endDateTime, item.allDay)}</Text>
             </Pressable>
           )}
-          ListEmptyComponent={<Text style={styles.empty}>No events match "{search}".</Text>}
+          ListEmptyComponent={<Text style={styles.empty}>No results match "{search}".</Text>}
         />
       ) : (
-        <>
-          <View style={styles.calendarWrap}>
-            <Calendar
-              current={visibleMonth}
-              onDayPress={(day: DateData) => setSelectedDate((prev) => (prev === day.dateString ? null : day.dateString))}
-              onMonthChange={(month: DateData) => setVisibleMonth(month.dateString)}
-              markedDates={markedDates}
-              theme={{ todayTextColor: colors.red, arrowColor: colors.red, selectedDayBackgroundColor: colors.red, dotColor: colors.red }}
-            />
-          </View>
-          {selectedDate && (
-            <FlatList
-              key={columns}
-              data={visibleEvents}
-              keyExtractor={(item) => item.id}
-              numColumns={columns}
-              columnWrapperStyle={columns > 1 ? styles.row : undefined}
-              contentContainerStyle={styles.list}
-              renderItem={({ item }) => (
-                <View style={[styles.cell, { width: `${100 / columns}%` }]}>
-                  <PostCard post={item} onPress={() => openDetail(item)} />
-                </View>
-              )}
-              ListEmptyComponent={<Text style={styles.empty}>No events on this day.</Text>}
-            />
+        <FlatList
+          key={columns}
+          data={visiblePosts}
+          keyExtractor={(item) => item.id}
+          numColumns={columns}
+          columnWrapperStyle={columns > 1 ? styles.row : undefined}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <View style={[styles.cell, { width: `${100 / columns}%` }]}>
+              <PostCard post={item} onPress={() => openDetail(item)} />
+            </View>
           )}
-        </>
+          ListEmptyComponent={<Text style={styles.empty}>Nothing here yet.</Text>}
+        />
       )}
 
       {detailPost && (
@@ -173,14 +191,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   searchInput: { flex: 1, paddingVertical: spacing.sm, fontSize: 14, color: colors.textPrimary },
-  calendarWrap: {
-    marginHorizontal: spacing.lg,
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    ...shadow.card,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
   },
+  filterChipActive: { backgroundColor: colors.red, borderColor: colors.red },
+  filterChipText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  filterChipTextActive: { color: colors.onAccent },
   resultRow: {
     backgroundColor: colors.surface,
     borderWidth: 1,
