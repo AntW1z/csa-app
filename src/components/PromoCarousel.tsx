@@ -31,6 +31,21 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
     listRef.current?.scrollToIndex({ index: items.length > 1 ? realIndex + 1 : realIndex, animated });
   };
 
+  // FlatList's initialScrollIndex prop is unreliable on react-native-web
+  // specifically (it scrolls before layout has settled, which browsers
+  // don't handle consistently) — it always worked on iOS but silently
+  // failed on web, leaving the list positioned nowhere near any real
+  // content. Doing the initial position explicitly via the same
+  // scrollToIndex already used elsewhere here is far more reliable, and
+  // the ref guard keeps it from re-firing (and yanking an in-progress
+  // viewer back to the start) if the item count just changes later.
+  const hasSetInitialScroll = useRef(false);
+  useEffect(() => {
+    if (hasSetInitialScroll.current || items.length <= 1) return;
+    hasSetInitialScroll.current = true;
+    listRef.current?.scrollToIndex({ index: 1, animated: false });
+  }, [items.length]);
+
   // Re-armed on every activeIndex change — whatever caused that change
   // (auto-advance firing, or the user manually swiping) gets a full fresh
   // AUTO_ADVANCE_MS before the next auto-advance, instead of the old timer
@@ -82,10 +97,12 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
         }}
         renderItem={({ item }) => (
           <Pressable style={[styles.slide, { width: SCREEN_WIDTH }]} onPress={() => onPressItem(item)} disabled={!item.postId}>
-            {/* "cover" so the image fills the screen edge-to-edge like a
-                hero photo, matching a full-bleed home page — letterboxing
-                ("contain") looked right for a short strip, not a full page. */}
-            <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="cover" />
+            {/* Blurred cover copy fills the screen edge-to-edge as a
+                backdrop, with the real (uncropped) image "contain"-ed on
+                top of it — full image always visible, no cropping, and no
+                plain blank bars when its shape doesn't match the screen. */}
+            <Image source={{ uri: item.imageUrl }} style={styles.bgImage} resizeMode="cover" blurRadius={25} />
+            <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="contain" />
           </Pressable>
         )}
       />
@@ -104,7 +121,8 @@ const styles = StyleSheet.create({
   wrap: { width: '100%', flex: 1 },
   list: { flex: 1 },
   slide: { height: '100%' },
-  image: { width: '100%', height: '100%', backgroundColor: colors.surfaceMuted },
+  bgImage: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.surfaceMuted },
+  image: { width: '100%', height: '100%', backgroundColor: 'transparent' },
   dots: {
     position: 'absolute',
     bottom: spacing.sm,
