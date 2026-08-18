@@ -7,7 +7,7 @@ import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { Post, StudentYear } from '../types';
 import { colors, radius, spacing, shadow, tagStyle } from '../theme';
-import { formatEventTimeRange } from '../utils';
+import { formatEventTimeRange, getEventWindow } from '../utils';
 import { YEAR_OPTIONS } from '../constants';
 
 const TAG_LABEL: Record<Post['type'], string> = {
@@ -34,6 +34,14 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
   // a check-in-enabled announcement/collab would work the same way if one
   // ever existed.
   const checkInEnabled = !!post.checkInCode;
+  // The code is meant to be announced live at the event, so the button
+  // itself only exists for the event's actual time window — not before
+  // (nothing to announce yet) and not after (the moment's passed). An
+  // undated post has no window to gate against, so it stays open. Already
+  // being checked in is unaffected by any of this — that's a permanent
+  // record, not something that should un-display once the event ends.
+  const eventWindow = getEventWindow(post);
+  const checkInWindowOpen = !eventWindow || (new Date() >= eventWindow.start && new Date() <= eventWindow.end);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [yearDraft, setYearDraft] = useState<StudentYear | null>(null);
   const [codeInput, setCodeInput] = useState('');
@@ -164,8 +172,19 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
             </View>
           ) : null}
           <View style={styles.detailBody}>
-            <View style={[styles.tag, { backgroundColor: tag.bg }]}>
-              <Text style={[styles.tagText, { color: tag.text }]}>{TAG_LABEL[post.type]}</Text>
+            <View style={styles.tagRow}>
+              <View style={[styles.tag, { backgroundColor: tag.bg }]}>
+                <Text style={[styles.tagText, { color: tag.text }]}>{TAG_LABEL[post.type]}</Text>
+              </View>
+              {/* Always visible the instant the modal opens, with no
+                  scrolling — this is the one thing worth guaranteeing
+                  someone sees right away if they already checked in. */}
+              {alreadyCheckedIn && (
+                <View style={styles.checkedInBadge}>
+                  <Ionicons name="checkmark-circle" size={13} color={colors.red} />
+                  <Text style={styles.checkedInBadgeText}>Checked in</Text>
+                </View>
+              )}
             </View>
             <Text style={styles.detailTitle}>{post.title}</Text>
             {time ? <Text style={styles.meta}>{time}</Text> : null}
@@ -186,6 +205,12 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
                     <Ionicons name="checkmark-circle" size={18} color={colors.red} />
                     <Text style={styles.checkedInText}>You're checked in!</Text>
                   </View>
+                ) : !checkInWindowOpen ? (
+                  <Text style={styles.checkInHint}>
+                    {eventWindow && new Date() < eventWindow.start
+                      ? "Check-in opens once the event starts."
+                      : 'Check-in has closed for this event.'}
+                  </Text>
                 ) : !checkInOpen ? (
                   <Pressable style={styles.checkInBtn} onPress={startCheckIn}>
                     <Ionicons name="qr-code-outline" size={16} color={colors.onAccent} />
@@ -284,8 +309,19 @@ const styles = StyleSheet.create({
   detailBody: { padding: spacing.lg, gap: spacing.xs },
   detailTitle: { fontSize: 19, fontWeight: '700', color: colors.textPrimary },
   meta: { fontSize: 12, color: colors.textSecondary },
-  tag: { alignSelf: 'flex-start', borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3, marginBottom: spacing.xs },
+  tagRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
+  tag: { alignSelf: 'flex-start', borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 },
   tagText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  checkedInBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.redSoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  checkedInBadgeText: { fontSize: 11, fontWeight: '700', color: colors.redSoftText },
   description: { fontSize: 14, color: colors.textSecondary, marginTop: spacing.sm, lineHeight: 20 },
 
   checkInSection: { marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border },
