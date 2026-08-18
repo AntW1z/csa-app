@@ -933,10 +933,15 @@ export default function ModeratorScreen() {
     setClearLogsStep('idle');
   };
 
-  // Soonest-created first isn't meaningful here — most-recently-dated event
-  // first is what a moderator actually wants when reviewing turnout.
+  // Gated on checkInCode being set (check-in currently required), not on
+  // checkIns already having entries — an event stays out of stats until
+  // it's actually opted in, and if a moderator later turns check-in back
+  // off (clearing checkInCode) after people already checked in, it drops
+  // back out rather than lingering with stale numbers. Soonest-created
+  // first isn't meaningful here — most-recently-dated event first is what
+  // a moderator actually wants when reviewing turnout.
   const checkedInEvents = posts
-    .filter((p) => p.type === 'event' && (p.checkIns?.length ?? 0) > 0)
+    .filter((p) => !!p.checkInCode)
     .sort((a, b) => (b.dateTime ?? '').localeCompare(a.dateTime ?? ''));
   const allCheckIns = checkedInEvents.flatMap((p) => p.checkIns ?? []);
   const statsEvent = statsEventId ? checkedInEvents.find((p) => p.id === statsEventId) ?? null : null;
@@ -1013,7 +1018,7 @@ export default function ModeratorScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.memberMgmtText}>Event statistics</Text>
             <Text style={styles.cardSubtitle}>
-              {checkedInEvents.length} event{checkedInEvents.length === 1 ? '' : 's'} with check-ins
+              {checkedInEvents.length} event{checkedInEvents.length === 1 ? '' : 's'} requiring check-in
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -1980,7 +1985,7 @@ export default function ModeratorScreen() {
                 <>
                   <Text style={styles.header}>Event statistics</Text>
                   {checkedInEvents.length === 0 ? (
-                    <Text style={styles.empty}>No check-ins recorded yet — set a check-in code on an event to start tracking.</Text>
+                    <Text style={styles.empty}>No events require check-in yet — turn on "Require check-in" on an event to start tracking.</Text>
                   ) : (
                     <>
                       <View style={styles.statsOverallCard}>

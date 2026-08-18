@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, Image, Pressable, ScrollView, TextInput, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { Post, StudentYear } from '../types';
@@ -64,10 +64,12 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
     setCheckInOpen(true);
   };
 
-  // One check-in per member, enforced client-side only (no server-side
-  // uniqueness check) — acceptable at this club's scale, where the worst
-  // case is someone editing local state to claim twice, which just isn't
-  // worth guarding against here.
+  // One check-in per member, enforced with an atomic read-check-write
+  // transaction rather than a blind arrayUnion — arrayUnion only dedupes
+  // exact object matches, and checkedInAt is a fresh timestamp every call,
+  // so two submits from the same account (a double-tap, or reopening
+  // before the UI catches up) would otherwise both go through and add two
+  // entries for the same uid.
   const submitCheckIn = async () => {
     if (!profile) return;
     const year = profile.year ?? yearDraft;
@@ -93,10 +95,16 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
       if (!profile.year) {
         await updateDoc(doc(db, 'users', profile.uid), { year });
       }
-      await updateDoc(doc(db, 'posts', post.id), {
-        // checkedInAt is a client timestamp, not serverTimestamp() —
-        // Firestore doesn't support that sentinel inside arrayUnion objects.
-        checkIns: arrayUnion({ uid: profile.uid, name: profile.displayName, year, checkedInAt: new Date().toISOString() }),
+      const postRef = doc(db, 'posts', post.id);
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(postRef);
+        const current = (snap.data() as Post | undefined)?.checkIns ?? [];
+        if (current.some((c) => c.uid === profile.uid)) return;
+        tx.update(postRef, {
+          // checkedInAt is a client timestamp, not serverTimestamp() —
+          // Firestore doesn't support that sentinel inside array values.
+          checkIns: [...current, { uid: profile.uid, name: profile.displayName, year, checkedInAt: new Date().toISOString() }],
+        });
       });
       setCheckInOpen(false);
     } catch {
