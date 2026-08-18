@@ -26,10 +26,14 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
   const time = formatEventTimeRange(post.dateTime, post.endDateTime, post.allDay);
   const tag = tagStyle[post.type];
 
-  // Only shown when a moderator actually set a code for this event (see
-  // the New/Edit Post form) — most posts have none and skip check-in
-  // entirely rather than showing a button that can never succeed.
-  const checkInEnabled = post.type === 'event' && !!post.checkInCode;
+  // Only shown when a moderator actually turned on "Require check-in" for
+  // this post (see the New/Edit Post form) — most posts have none and skip
+  // check-in entirely rather than showing a button that can never succeed.
+  // Not restricted to type === 'event' — that's the main use case (and the
+  // only type the form currently creates), but nothing here assumes it, so
+  // a check-in-enabled announcement/collab would work the same way if one
+  // ever existed.
+  const checkInEnabled = !!post.checkInCode;
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [yearDraft, setYearDraft] = useState<StudentYear | null>(null);
   const [codeInput, setCodeInput] = useState('');
@@ -56,9 +60,11 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
       setCheckInError('Select your year.');
       return;
     }
-    const expected = (post.checkInCode ?? '').trim().toLowerCase();
-    const entered = codeInput.trim().toLowerCase();
-    if (!entered || entered !== expected) {
+    // codeInput is already digits-only and capped at 6 chars as typed (see
+    // the TextInput below), but re-checking the length here means a
+    // mis-set (non-6-digit) checkInCode on the post itself can never match
+    // by accident either.
+    if (codeInput.length !== 6 || (post.checkInCode ?? '').length !== 6 || codeInput !== post.checkInCode) {
       setCheckInError('Incorrect code.');
       return;
     }
@@ -176,14 +182,18 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
                         </View>
                       </>
                     )}
-                    <Text style={styles.checkInHint}>Enter the code announced at the event:</Text>
+                    <Text style={styles.checkInHint}>Enter the 6-digit code announced at the event:</Text>
                     <TextInput
                       style={styles.checkInInput}
-                      placeholder="Check-in code"
+                      placeholder="6-digit code"
                       placeholderTextColor={colors.textMuted}
-                      autoCapitalize="characters"
+                      keyboardType="number-pad"
+                      maxLength={6}
                       value={codeInput}
-                      onChangeText={setCodeInput}
+                      // Digits-only whitelist as they type — nothing but
+                      // 0-9 ever reaches state here, which is also what
+                      // keeps this field safe from injection-style input.
+                      onChangeText={(v) => setCodeInput(v.replace(/[^0-9]/g, '').slice(0, 6))}
                     />
                     {checkInError ? <Text style={styles.checkInErrorText}>{checkInError}</Text> : null}
                     <View style={styles.checkInActionRow}>
@@ -194,10 +204,10 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
                         style={[
                           styles.checkInBtn,
                           { flex: 1 },
-                          (submittingCheckIn || !codeInput.trim() || (!profile?.year && !yearDraft)) && styles.checkInBtnDisabled,
+                          (submittingCheckIn || codeInput.length !== 6 || (!profile?.year && !yearDraft)) && styles.checkInBtnDisabled,
                         ]}
                         onPress={submitCheckIn}
-                        disabled={submittingCheckIn || !codeInput.trim() || (!profile?.year && !yearDraft)}
+                        disabled={submittingCheckIn || codeInput.length !== 6 || (!profile?.year && !yearDraft)}
                       >
                         <Text style={styles.checkInBtnText}>{submittingCheckIn ? 'Checking in…' : 'Submit'}</Text>
                       </Pressable>

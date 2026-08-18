@@ -69,10 +69,12 @@ export interface Post {
   locationText?: string;
   visibility: Visibility;
   imageUrl?: string;
-  // Set by a moderator in the New/Edit Post form (type === 'event' only) —
-  // attendees type this in to check in from PostDetailModal. Optional: a
-  // moderator can skip setting one if this particular event doesn't need
-  // check-in tracking.
+  // Set by a moderator via the "Require check-in" toggle in the New/Edit
+  // Post form — attendees type this in to check in from PostDetailModal.
+  // Always exactly 6 digits (enforced by both the moderator's input field
+  // and the attendee's), never freeform text. Absent means check-in isn't
+  // required/available for this post — mainly used on events, but not
+  // restricted to type === 'event' since nothing about it assumes that.
   checkInCode?: string;
   // One entry per checked-in attendee, appended via arrayUnion — embedded
   // directly on the post rather than a separate collection/subcollection,

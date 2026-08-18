@@ -253,6 +253,7 @@ export default function ModeratorScreen() {
   const [description, setDescription] = useState('');
   const [eventRange, setEventRange] = useState<TimeRange>({ start: null, end: null, allDay: true });
   const [locationText, setLocationText] = useState('');
+  const [checkInRequired, setCheckInRequired] = useState(false);
   const [checkInCode, setCheckInCode] = useState('');
   const [visibility, setVisibility] = useState<'everyone' | 'members'>('everyone');
   const [type] = useState<'event' | 'announcement' | 'collab'>('event');
@@ -743,12 +744,13 @@ export default function ModeratorScreen() {
   };
 
 
-  const canPublish = !!(title.trim() && description.trim() && eventRange.start && eventRange.end) && !imageUploading;
+  const canPublish = !!(title.trim() && description.trim() && eventRange.start && eventRange.end) && !imageUploading &&
+    (!checkInRequired || checkInCode.length === 6);
 
   const openNewPost = () => {
     setEditingPost(null);
     setTitle(''); setDescription(''); setEventRange({ start: null, end: null, allDay: true });
-    setLocationText(''); setCheckInCode(''); setImageUrl(''); setVisibility('everyone'); setImageUploading(false);
+    setLocationText(''); setCheckInRequired(false); setCheckInCode(''); setImageUrl(''); setVisibility('everyone'); setImageUploading(false);
     setNewPostFormKey((k) => k + 1);
     setShowNewPost(true);
   };
@@ -758,6 +760,7 @@ export default function ModeratorScreen() {
     setTitle(post.title);
     setDescription(post.description);
     setLocationText(post.locationText ?? '');
+    setCheckInRequired(!!post.checkInCode);
     setCheckInCode(post.checkInCode ?? '');
     setImageUrl(post.imageUrl ?? '');
     setImageUploading(false);
@@ -790,7 +793,8 @@ export default function ModeratorScreen() {
     // value from this form's local state.
     const dateTimeChanged = !!editingPost && editingPost.dateTime !== dateTimeIso;
     const wasDraft = !editingPost || editingPost.status === 'draft';
-    const trimmedCode = checkInCode.trim();
+    // canPublish already guarantees checkInCode.length === 6 whenever
+    // checkInRequired is on, so there's nothing left to validate here.
     const data = {
       type, title, description, locationText, visibility,
       status: publish ? 'published' : 'draft',
@@ -799,7 +803,7 @@ export default function ModeratorScreen() {
       allDay: eventRange.allDay,
       ...(imageUrl ? { imageUrl } : {}),
       ...(dateTimeChanged ? { startNotificationSent: false, reminderSent: false } : {}),
-      ...(trimmedCode ? { checkInCode: trimmedCode } : editingPost ? { checkInCode: deleteField() } : {}),
+      ...(checkInRequired ? { checkInCode } : editingPost ? { checkInCode: deleteField() } : {}),
     };
     if (editingPost) {
       await updateDoc(doc(db, 'posts', editingPost.id), data);
@@ -1244,17 +1248,38 @@ export default function ModeratorScreen() {
                 initial={editingPost ? eventRange : undefined}
               />
               <TextInput style={styles.input} placeholder="Location (optional)" placeholderTextColor={colors.textMuted} value={locationText} onChangeText={setLocationText} />
-              <TextInput
-                style={[styles.input, { marginTop: spacing.sm }]}
-                placeholder="Check-in code (optional)"
-                placeholderTextColor={colors.textMuted}
-                autoCapitalize="characters"
-                value={checkInCode}
-                onChangeText={setCheckInCode}
-              />
+
+              <View style={[styles.row, { marginTop: spacing.sm }]}>
+                <Text style={styles.rowLabel}>Require check-in</Text>
+                <Switch
+                  value={checkInRequired}
+                  onValueChange={(v) => { setCheckInRequired(v); if (!v) setCheckInCode(''); }}
+                  trackColor={{ true: colors.red, false: colors.borderStrong }}
+                />
+              </View>
+              {checkInRequired && (
+                <>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="6-digit code"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    value={checkInCode}
+                    // Digits-only whitelist, enforced as they type — this is
+                    // also what keeps this field safe from injection-style
+                    // input, since nothing but 0-9 can ever reach state (and
+                    // therefore Firestore) in the first place.
+                    onChangeText={(v) => setCheckInCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
+                  />
+                  {checkInCode.length > 0 && checkInCode.length < 6 && (
+                    <Text style={styles.hint}>Code must be exactly 6 digits.</Text>
+                  )}
+                </>
+              )}
               <Text style={styles.hint}>
-                Announce this at the event — attendees type it in to check in from the post. Leave blank to
-                skip check-in tracking for this event.
+                Mainly for events — announce the code there and attendees type it in to check in from the
+                post. Other post types support this too, just in case, though it's rarely needed for them.
               </Text>
               <ImagePickerField folder="posts" value={imageUrl} onChange={setImageUrl} onUploadingChange={setImageUploading} />
               <View style={styles.row}>
