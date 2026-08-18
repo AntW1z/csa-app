@@ -817,8 +817,17 @@ export default function ModeratorScreen() {
     closeNewPost();
   };
 
-  const deletePost = (post: Post) => {
-    deleteDoc(doc(db, 'posts', post.id));
+  // Carousel items link to a post by id (see resolvedCarousel in the Home
+  // screen) rather than embedding their own copy of it — without this, a
+  // deleted post would leave a dead carousel entry pointing nowhere.
+  const deletePost = async (post: Post) => {
+    await deleteDoc(doc(db, 'posts', post.id));
+    const linkedCarouselItems = carousel.filter((item) => item.postId === post.id);
+    if (linkedCarouselItems.length > 0) {
+      const batch = writeBatch(db);
+      linkedCarouselItems.forEach((item) => batch.delete(doc(db, 'carouselItems', item.id)));
+      await batch.commit();
+    }
     logAction(`Deleted post "${post.title}"`);
   };
 
