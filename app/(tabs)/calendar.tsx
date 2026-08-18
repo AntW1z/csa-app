@@ -60,6 +60,7 @@ export default function EventsScreen() {
   const [detailPost, setDetailPost] = useState<Post | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const isMemberOrAbove = !!profile && profile.role !== 'user';
+  const isModeratorOrAbove = profile?.role === 'moderator' || profile?.role === 'admin';
 
   const openDetail = (post: Post) => {
     setDetailPost(post);
@@ -73,10 +74,14 @@ export default function EventsScreen() {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
-      setPosts(all.filter((p) => p.visibility === 'everyone' || isMemberOrAbove));
+      setPosts(
+        all.filter(
+          (p) => (p.visibility === 'everyone' || isMemberOrAbove) && (p.status !== 'draft' || isModeratorOrAbove)
+        )
+      );
     });
     return unsub;
-  }, [isMemberOrAbove]);
+  }, [isMemberOrAbove, isModeratorOrAbove]);
 
   const now = new Date();
   const filtered = posts.filter(

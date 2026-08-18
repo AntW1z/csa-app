@@ -12,6 +12,7 @@ const BACKFILL_GUARD_MS = 24 * 60 * 60 * 1000;
 
 interface PostDoc {
   title: string;
+  status?: 'draft' | 'published';
   dateTime?: string;
   allDay?: boolean;
   visibility: 'everyone' | 'members';
@@ -74,7 +75,7 @@ export const sendEventReminders = onSchedule('every 15 minutes', async () => {
   const postsSnap = await db.collection('posts').where('dateTime', '>', cutoffIso).get();
   const candidates = postsSnap.docs.filter((d) => {
     const p = d.data() as PostDoc;
-    return !!p.dateTime && !p.allDay;
+    return !!p.dateTime && !p.allDay && p.status !== 'draft';
   });
 
   if (candidates.length === 0) {

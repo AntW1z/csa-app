@@ -23,8 +23,18 @@ export default function PostCard({ post, onPress }: { post: Post; onPress: () =>
     <Pressable style={styles.card} onPress={onPress}>
       {post.imageUrl ? <Image source={{ uri: post.imageUrl }} style={styles.image} resizeMode="cover" /> : null}
       <View style={styles.content}>
-        <View style={[styles.tag, { backgroundColor: tag.bg }]}>
-          <Text style={[styles.tagText, { color: tag.text }]}>{TAG_LABEL[post.type]}</Text>
+        <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+          <View style={[styles.tag, { backgroundColor: tag.bg }]}>
+            <Text style={[styles.tagText, { color: tag.text }]}>{TAG_LABEL[post.type]}</Text>
+          </View>
+          {/* Only a moderator ever sees a draft post at all (see the
+              Events tab's visibility filter), but the badge still helps
+              tell it apart from what's actually live at a glance. */}
+          {post.status === 'draft' && (
+            <View style={[styles.tag, { backgroundColor: colors.neutralSoft }]}>
+              <Text style={[styles.tagText, { color: colors.neutralSoftText }]}>draft</Text>
+            </View>
+          )}
         </View>
         <Text style={styles.title} numberOfLines={2}>{post.title}</Text>
         {time ? <Text style={styles.meta}>{time}</Text> : null}

@@ -43,6 +43,11 @@ export type Visibility = 'everyone' | 'members';
 export interface Post {
   id: string;
   type: PostType;
+  // undefined defaults to 'published' — every post created before this
+  // field existed should stay visible, not silently vanish. A draft is
+  // only ever visible to moderators (see Events tab filtering); everyone
+  // else only sees 'published' ones.
+  status?: 'draft' | 'published';
   title: string;
   description: string;
   // ISO 8601 strings from the moderator dashboard's date/time picker — chosen

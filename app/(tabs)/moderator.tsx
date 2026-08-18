@@ -788,7 +788,10 @@ export default function ModeratorScreen() {
     setEditingPost(null);
   };
 
-  const savePost = async () => {
+  // publish=false saves/keeps it as a draft — visible only to moderators
+  // in the Events tab (see the filter there), invisible to everyone else
+  // and never triggers a notification, until a later Publish flips it.
+  const savePost = async (publish: boolean) => {
     if (!canPublish || !profile || !eventRange.start || !eventRange.end) return;
     const dateTimeIso = eventRange.start.toISOString();
     // If the event's start time is changing, reset both notification-sent
@@ -799,8 +802,10 @@ export default function ModeratorScreen() {
     // payload so saving other post edits can't clobber it back to a stale
     // value from this form's local state.
     const dateTimeChanged = !!editingPost && editingPost.dateTime !== dateTimeIso;
+    const wasDraft = !editingPost || editingPost.status === 'draft';
     const data = {
       type, title, description, locationText, visibility,
+      status: publish ? 'published' : 'draft',
       dateTime: dateTimeIso,
       endDateTime: eventRange.end.toISOString(),
       allDay: eventRange.allDay,
@@ -809,10 +814,10 @@ export default function ModeratorScreen() {
     };
     if (editingPost) {
       await updateDoc(doc(db, 'posts', editingPost.id), data);
-      logAction(`Edited post "${title}"`);
+      logAction(`${publish && wasDraft ? 'Published' : 'Edited'} post "${title}"`);
     } else {
       await addDoc(collection(db, 'posts'), { ...data, createdBy: profile.uid, createdAt: serverTimestamp() });
-      logAction(`Created post "${title}"`);
+      logAction(`${publish ? 'Created' : 'Drafted'} post "${title}"`);
     }
     closeNewPost();
   };
@@ -1055,6 +1060,11 @@ export default function ModeratorScreen() {
                   <View style={[styles.postTag, { backgroundColor: tagStyle[item.type].bg }]}>
                     <Text style={[styles.postTagText, { color: tagStyle[item.type].text }]}>{item.type}</Text>
                   </View>
+                  {item.status === 'draft' && (
+                    <View style={styles.roleTag}>
+                      <Text style={styles.roleTagText}>draft</Text>
+                    </View>
+                  )}
                   <Text style={styles.postTitle} numberOfLines={1}>{item.title}</Text>
                   <Pressable onPress={() => openEditPost(item)} hitSlop={8}>
                     <Text style={styles.editText}>edit</Text>
@@ -1225,9 +1235,22 @@ export default function ModeratorScreen() {
                 reminders from Manage {'>'} Notifications once this is saved.
               </Text>
 
-              <Pressable style={[styles.button, !canPublish && styles.buttonDisabled, { marginTop: spacing.md }]} onPress={savePost} disabled={!canPublish}>
-                <Text style={styles.buttonText}>{editingPost ? 'Save changes' : 'Publish'}</Text>
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+                <Pressable
+                  style={[styles.resetBtn, { flex: 1 }, !canPublish && styles.buttonDisabled]}
+                  onPress={() => savePost(false)}
+                  disabled={!canPublish}
+                >
+                  <Text style={styles.resetText}>Save as draft</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.button, { flex: 1 }, !canPublish && styles.buttonDisabled]}
+                  onPress={() => savePost(true)}
+                  disabled={!canPublish}
+                >
+                  <Text style={styles.buttonText}>{editingPost && editingPost.status !== 'draft' ? 'Save changes' : 'Publish'}</Text>
+                </Pressable>
+              </View>
             </ScrollView>
           </View>
         </View>
