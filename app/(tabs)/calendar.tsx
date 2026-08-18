@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, FlatList, useWindowDimensions, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import PostCard from '../../src/components/PostCard';
 import PostDetailModal from '../../src/components/PostDetailModal';
-import { Post, PostType } from '../../src/types';
+import { Post } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 import { getEventWindow, formatEventTimeRange } from '../../src/utils';
 
@@ -21,8 +21,11 @@ function columnsForWidth(width: number) {
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
+// 'upcoming' is the default: every event that hasn't ended yet, sorted
+// soonest-first, with no cutoff — that's genuinely different from 'week'/
+// 'month' (both are narrower slices bounded to a specific window) and
+// from 'all' (which also includes events that have already passed).
 type DateFilter = 'upcoming' | 'week' | 'month' | 'all';
-type TypeFilter = 'all' | PostType;
 
 const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'upcoming', label: 'Upcoming' },
@@ -31,16 +34,8 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'all', label: 'All' },
 ];
 
-const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'event', label: 'Events' },
-  { key: 'announcement', label: 'Announcements' },
-  { key: 'collab', label: 'Collabs' },
-];
-
-// Posts with no dateTime (evergreen announcements, mainly) always pass —
-// a date filter narrowing to "this week" shouldn't hide something that
-// was never dated in the first place.
+// Posts with no dateTime always pass — a date filter narrowing to "this
+// week" shouldn't hide something that was never dated in the first place.
 function matchesDateFilter(post: Post, filter: DateFilter, now: Date): boolean {
   const window = getEventWindow(post);
   if (!window || filter === 'all') return true;
@@ -56,7 +51,6 @@ export default function EventsScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('upcoming');
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [detailPost, setDetailPost] = useState<Post | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const isMemberOrAbove = !!profile && profile.role !== 'user';
@@ -67,11 +61,8 @@ export default function EventsScreen() {
     setShowDetail(true);
   };
 
-  // Every post type lives here now, not just "event" — Home dropped its
-  // general feed in favor of the full-bleed carousel, so this is the only
-  // place announcements/collabs are browsable at all, alongside events.
   useEffect(() => {
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'posts'), where('type', '==', 'event'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
       setPosts(
@@ -84,9 +75,7 @@ export default function EventsScreen() {
   }, [isMemberOrAbove, isModeratorOrAbove]);
 
   const now = new Date();
-  const filtered = posts.filter(
-    (p) => (typeFilter === 'all' || p.type === typeFilter) && matchesDateFilter(p, dateFilter, now)
-  );
+  const filtered = posts.filter((p) => matchesDateFilter(p, dateFilter, now));
   // Dated posts sort soonest-first; undated ones (no dateTime) trail behind
   // in their already-fetched createdAt-desc order, since there's no date
   // to sort them by.
@@ -95,9 +84,9 @@ export default function EventsScreen() {
   const visiblePosts = [...dated, ...undated];
 
   const query_ = search.trim().toLowerCase();
-  // Search operates within the current filters rather than the full list,
-  // so "Announcements" + a search term compose instead of the search
-  // silently ignoring the type/date filters already chosen.
+  // Search operates within the current date filter rather than the full
+  // list, so e.g. "This week" + a search term compose instead of the
+  // search silently ignoring the date filter already chosen.
   const searchResults = query_ ? visiblePosts.filter((p) => p.title.toLowerCase().includes(query_)) : [];
 
   return (
@@ -128,17 +117,6 @@ export default function EventsScreen() {
             onPress={() => setDateFilter(f.key)}
           >
             <Text style={[styles.filterChipText, dateFilter === f.key && styles.filterChipTextActive]}>{f.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <View style={styles.filterRow}>
-        {TYPE_FILTERS.map((f) => (
-          <Pressable
-            key={f.key}
-            style={[styles.filterChip, typeFilter === f.key && styles.filterChipActive]}
-            onPress={() => setTypeFilter(f.key)}
-          >
-            <Text style={[styles.filterChipText, typeFilter === f.key && styles.filterChipTextActive]}>{f.label}</Text>
           </Pressable>
         ))}
       </View>
