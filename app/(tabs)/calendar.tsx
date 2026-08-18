@@ -21,14 +21,9 @@ function columnsForWidth(width: number) {
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
-// 'upcoming' is the default: every event that hasn't ended yet, sorted
-// soonest-first, with no cutoff — that's genuinely different from 'week'/
-// 'month' (both are narrower slices bounded to a specific window) and
-// from 'all' (which also includes events that have already passed).
-type DateFilter = 'upcoming' | 'week' | 'month' | 'all';
+type DateFilter = 'week' | 'month' | 'all';
 
 const DATE_FILTERS: { key: DateFilter; label: string }[] = [
-  { key: 'upcoming', label: 'Upcoming' },
   { key: 'week', label: 'This week' },
   { key: 'month', label: 'This month' },
   { key: 'all', label: 'All' },
@@ -36,10 +31,11 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
 
 // Posts with no dateTime always pass — a date filter narrowing to "this
 // week" shouldn't hide something that was never dated in the first place.
+// 'week'/'month' both also hide anything that's already ended; 'all' is
+// the only one that includes past events too.
 function matchesDateFilter(post: Post, filter: DateFilter, now: Date): boolean {
   const window = getEventWindow(post);
   if (!window || filter === 'all') return true;
-  if (filter === 'upcoming') return window.end >= now;
   if (filter === 'week') return window.end >= now && window.start <= new Date(now.getTime() + WEEK_MS);
   return window.end >= now && window.start <= new Date(now.getTime() + MONTH_MS);
 }
@@ -50,7 +46,7 @@ export default function EventsScreen() {
   const columns = columnsForWidth(width);
   const [posts, setPosts] = useState<Post[]>([]);
   const [search, setSearch] = useState('');
-  const [dateFilter, setDateFilter] = useState<DateFilter>('upcoming');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('week');
   const [detailPost, setDetailPost] = useState<Post | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const isMemberOrAbove = !!profile && profile.role !== 'user';
