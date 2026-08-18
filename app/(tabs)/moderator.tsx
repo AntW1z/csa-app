@@ -814,6 +814,17 @@ export default function ModeratorScreen() {
     };
     if (editingPost) {
       await updateDoc(doc(db, 'posts', editingPost.id), data);
+      // Reverting a published post back to draft should pull it out of the
+      // carousel the same way deleting it does — otherwise a "draft" post
+      // could still be sitting there live on Home for everyone to see.
+      if (!publish && !wasDraft) {
+        const linkedCarouselItems = carousel.filter((item) => item.postId === editingPost.id);
+        if (linkedCarouselItems.length > 0) {
+          const batch = writeBatch(db);
+          linkedCarouselItems.forEach((item) => batch.delete(doc(db, 'carouselItems', item.id)));
+          await batch.commit();
+        }
+      }
       logAction(`${publish && wasDraft ? 'Published' : 'Edited'} post "${title}"`);
     } else {
       await addDoc(collection(db, 'posts'), { ...data, createdBy: profile.uid, createdAt: serverTimestamp() });
@@ -859,7 +870,7 @@ export default function ModeratorScreen() {
   // Guards against a double-tap (or tapping a post that's already in the
   // rotation) adding the same event twice.
   const addCarouselFromPost = async (post: Post) => {
-    if (!post.imageUrl) return;
+    if (!post.imageUrl || post.status === 'draft') return;
     if (carousel.some((item) => item.postId === post.id)) return;
     await addDoc(collection(db, 'carouselItems'), {
       imageUrl: post.imageUrl,
@@ -1183,11 +1194,14 @@ export default function ModeratorScreen() {
                 </>
               ) : (
                 <>
-                  <Text style={styles.hint}>Tap a post to add its image — tapping it in the carousel will open that event's details.</Text>
-                  {posts.filter((p) => p.imageUrl).length === 0 && (
+                  <Text style={styles.hint}>
+                    Tap a post to add its image — tapping it in the carousel will open that event's details.
+                    Drafts can't be added until they're published.
+                  </Text>
+                  {posts.filter((p) => p.imageUrl && p.status !== 'draft').length === 0 && (
                     <Text style={styles.empty}>No posts with images yet — add an image to a post first, or switch to Image mode.</Text>
                   )}
-                  {posts.filter((p) => p.imageUrl).map((post) => (
+                  {posts.filter((p) => p.imageUrl && p.status !== 'draft').map((post) => (
                     <Pressable key={post.id} style={styles.eventPickRow} onPress={() => addCarouselFromPost(post)}>
                       <Image source={{ uri: post.imageUrl }} style={styles.carouselThumb} />
                       <Text style={styles.eventPickTitle} numberOfLines={1}>{post.title}</Text>
