@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, Image, Pressable, ScrollView, TextInput, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -41,6 +41,21 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
   const [submittingCheckIn, setSubmittingCheckIn] = useState(false);
 
   const alreadyCheckedIn = !!profile && !!post.checkIns?.some((c) => c.uid === profile.uid);
+
+  // The screens that render this (calendar.tsx, index.tsx) keep the same
+  // PostDetailModal instance mounted across opens/closes and even across
+  // different posts — visible just toggles a `return null`, and closing
+  // never clears the `post` prop that feeds it. Without this, reopening
+  // (the same post or a different one) could resume mid check-in with
+  // whatever was left over from last time instead of starting fresh.
+  useEffect(() => {
+    if (!visible) return;
+    setCheckInOpen(false);
+    setYearDraft(null);
+    setCodeInput('');
+    setCheckInError('');
+    setSubmittingCheckIn(false);
+  }, [visible, post.id]);
 
   const startCheckIn = () => {
     setCheckInError('');
