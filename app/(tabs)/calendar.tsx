@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, FlatList, useWindowDimensions, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import PostCard from '../../src/components/PostCard';
@@ -58,9 +58,16 @@ export default function EventsScreen() {
   };
 
   useEffect(() => {
-    const q = query(collection(db, 'posts'), where('type', '==', 'event'), orderBy('createdAt', 'desc'));
+    // No orderBy here deliberately — combining it with the where() below
+    // would need a composite index provisioned in the Firebase console.
+    // Sorting client-side instead avoids that entirely; createdAt-desc is
+    // only used as a fallback order anyway (see the dated/undated split
+    // below), so doing it in JS costs nothing.
+    const q = query(collection(db, 'posts'), where('type', '==', 'event'));
     const unsub = onSnapshot(q, (snap) => {
-      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
+      const all = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Post))
+        .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
       setPosts(
         all.filter(
           (p) => (p.visibility === 'everyone' || isMemberOrAbove) && (p.status !== 'draft' || isModeratorOrAbove)
