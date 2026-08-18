@@ -45,6 +45,7 @@ export default function ProfileScreen() {
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackError, setFeedbackError] = useState('');
 
   useEffect(() => {
     if (!firebaseUser) return;
@@ -160,11 +161,13 @@ export default function ProfileScreen() {
     setShowCsaInfo(false);
     setFeedbackMessage('');
     setFeedbackSubmitted(false);
+    setFeedbackError('');
   };
 
   const submitFeedback = async () => {
     if (!profile || !feedbackMessage.trim()) return;
     setFeedbackSubmitting(true);
+    setFeedbackError('');
     try {
       await addDoc(collection(db, 'feedback'), {
         message: feedbackMessage.trim(),
@@ -178,6 +181,7 @@ export default function ProfileScreen() {
       setFeedbackSubmitted(true);
     } catch (err) {
       console.warn('Feedback submit failed:', err);
+      setFeedbackError('Something went wrong sending that — try again.');
     } finally {
       setFeedbackSubmitting(false);
     }
@@ -448,6 +452,7 @@ export default function ProfileScreen() {
                       onChangeText={setFeedbackMessage}
                       multiline
                     />
+                    {feedbackError ? <Text style={styles.error}>{feedbackError}</Text> : null}
                     <Pressable
                       style={[styles.button, { marginTop: spacing.sm }, (feedbackSubmitting || !feedbackMessage.trim()) && styles.buttonDisabled]}
                       onPress={submitFeedback}
