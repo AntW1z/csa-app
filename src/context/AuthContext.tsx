@@ -103,8 +103,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [firebaseUser]);
 
   const isMemberOrAbove = !!profile && profile.role !== 'user';
+  // Joining shouldn't dump the entire history of past sends into a brand
+  // new inbox — only notifications sent on or after this account existed
+  // are eligible. Falls back to 0 (show everything) if either timestamp
+  // isn't resolved yet rather than risk hiding something real.
+  const joinedAtMs = profile?.createdAt?.toMillis?.() ?? 0;
   const visibleNotifications = sentNotifications.filter(
-    (n) => (n.audience === 'everyone' || isMemberOrAbove) && !profile?.deletedNotificationIds?.includes(n.id)
+    (n) =>
+      (n.audience === 'everyone' || isMemberOrAbove) &&
+      !profile?.deletedNotificationIds?.includes(n.id) &&
+      (n.sentAt?.toMillis?.() ?? Infinity) >= joinedAtMs
   );
   const unreadCount = profile
     ? visibleNotifications.filter((n) => !(profile.readNotificationIds ?? []).includes(n.id)).length
