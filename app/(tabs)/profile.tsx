@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, Modal, ScrollView, Linking, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, ScrollView, Linking, Platform, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -122,7 +122,10 @@ export default function ProfileScreen() {
   const handleNotifRowPress = async () => {
     if (notifStatus === 'granted' || notifStatus === 'checking') return;
     if (notifStatus === 'denied') {
-      Linking.openSettings();
+      // openSettings() opens the OS Settings app — there's no equivalent
+      // on web, where notification permission lives in the browser's own
+      // site-settings UI instead, so there's nothing useful to jump to.
+      if (Platform.OS !== 'web') Linking.openSettings();
       return;
     }
     if (!profile) return;
