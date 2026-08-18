@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Image, Pressable, ScrollView, Linking, StyleSheet } from 'react-native';
+import { View, Text, Image, Pressable, ScrollView, Linking, Alert, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
@@ -72,7 +72,15 @@ export default function SponsorsScreen() {
     items: informationSponsors.filter((s) => resolveCategory(s) === cat),
   })).filter((r) => r.items.length > 0);
 
-  const openLink = (link: SponsorLink) => Linking.openURL(resolveLinkUrl(link));
+  // Linking.openURL rejects (rather than resolving false) when nothing on
+  // the device can handle the URL — an uncaught rejection here surfaced as
+  // a raw red-screen error instead of anything a member would understand,
+  // so this always ends in a plain, dismissible message instead.
+  const openLink = (link: SponsorLink) => {
+    Linking.openURL(resolveLinkUrl(link)).catch(() => {
+      Alert.alert("Couldn't open link", "This device doesn't support opening that link.");
+    });
+  };
 
   const linkedSponsor = selected?.linkedSponsorId
     ? sponsors.find((s) => s.id === selected.linkedSponsorId) ?? null

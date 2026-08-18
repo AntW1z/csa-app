@@ -111,7 +111,11 @@ export function sortByOrder<T extends { order?: number }>(items: T[]): T[] {
 export function resolveLinkUrl(link: SponsorLink): string {
   if (link.type !== 'directions') return link.url;
   const query = encodeURIComponent(link.url);
-  return Platform.OS === 'ios' ? `https://maps.apple.com/?address=${query}` : `https://www.google.com/maps/search/?api=1&query=${query}`;
+  // `q` rather than `address` — it's the parameter Apple's own Maps Links
+  // reference actually documents for "search/show this place," and is
+  // more consistently supported (the iOS Simulator's Maps app in
+  // particular can fail to open an `address=` link outright).
+  return Platform.OS === 'ios' ? `https://maps.apple.com/?q=${query}` : `https://www.google.com/maps/search/?api=1&query=${query}`;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
