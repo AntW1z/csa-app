@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, Modal, ScrollView, Linking, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -22,7 +21,6 @@ const PRIVACY_POLICY_URL = 'https://antw1z.github.io/csa-app/privacy-policy.html
 const termLabel = (term?: MembershipTerm) => (term === 'year' ? 'Full Year' : term === 'semester' ? 'Semester' : null);
 
 export default function ProfileScreen() {
-  const router = useRouter();
   const { firebaseUser, profile, loading, skipAutoCreateProfile } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -330,20 +328,12 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
 
-          <Pressable style={styles.settingsRow} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+          <Pressable style={[styles.settingsRow, styles.settingsRowLast]} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
             <View style={styles.settingsIcon}>
               <Ionicons name="document-text-outline" size={16} color={colors.red} />
             </View>
             <Text style={styles.settingsLabel}>Privacy Policy</Text>
             <Ionicons name="open-outline" size={16} color={colors.textMuted} />
-          </Pressable>
-
-          <Pressable style={[styles.settingsRow, styles.settingsRowLast]} onPress={() => router.push('/links')}>
-            <View style={styles.settingsIcon}>
-              <Ionicons name="chatbubbles-outline" size={16} color={colors.red} />
-            </View>
-            <Text style={styles.settingsLabel}>Contact us</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
         </View>
 

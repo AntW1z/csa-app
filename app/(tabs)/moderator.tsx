@@ -2072,7 +2072,9 @@ export default function ModeratorScreen() {
             </Pressable>
             <ScrollView>
               <Text style={styles.header}>Feedback ({feedback.length})</Text>
-              <Text style={styles.hint}>Suggestions and bug reports submitted from the "What is CSA?" popup in Profile.</Text>
+              <Text style={[styles.hint, { paddingHorizontal: 0, marginBottom: spacing.md }]}>
+                Suggestions and bug reports submitted from the "What is CSA?" popup in Profile.
+              </Text>
               {feedback.length === 0 && <Text style={styles.empty}>Nothing submitted yet.</Text>}
               {feedback.map((item) => (
                 <View key={item.id} style={styles.logRow}>
