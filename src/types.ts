@@ -69,14 +69,16 @@ export interface Post {
   locationText?: string;
   visibility: Visibility;
   imageUrl?: string;
-  // Set by a moderator via the "Require check-in" toggle in the New/Edit
-  // Post form — attendees type this in to check in from PostDetailModal.
-  // Always exactly 6 digits (enforced by both the moderator's input field
-  // and the attendee's), never freeform text. Absent means check-in isn't
-  // required/available for this post — mainly used on events, but not
-  // restricted to type === 'event' since nothing about it assumes that.
+  // Auto-generated (see generateCheckInCode in moderator.tsx) when a
+  // moderator turns on "Require check-in" in the New/Edit Post form — not
+  // typed by anyone, so there's nothing for a moderator to get wrong.
+  // Always exactly 6 digits. Attendees type it back in to check in from
+  // PostDetailModal. Absent means check-in isn't required/available for
+  // this post — mainly used on events, but not restricted to
+  // type === 'event' since nothing about it assumes that.
   checkInCode?: string;
-  // One entry per checked-in attendee, appended via arrayUnion — embedded
+  // One entry per checked-in attendee, appended via a transaction (not
+  // arrayUnion — see PostDetailModal for why) — embedded
   // directly on the post rather than a separate collection/subcollection,
   // since club-scale attendance numbers are small and this keeps per-event
   // stats (headcount + year breakdown) a single-document read. year is

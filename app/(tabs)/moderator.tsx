@@ -19,6 +19,11 @@ import PieChart from '../../src/components/PieChart';
 const pad = (n: number) => String(n).padStart(2, '0');
 const toDateString = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+// Always exactly 6 digits (100000-999999, never a leading zero that'd read
+// short) — generated rather than typed by a moderator, so there's nothing
+// for them to get wrong and no free-text input to worry about at all here.
+const generateCheckInCode = () => String(Math.floor(100000 + Math.random() * 900000));
+
 export type TimeRange = { start: Date | null; end: Date | null; allDay: boolean };
 
 // Presets for the optional early reminder on an event, capped at 60
@@ -1258,29 +1263,28 @@ export default function ModeratorScreen() {
                 <Text style={styles.rowLabel}>Require check-in</Text>
                 <Switch
                   value={checkInRequired}
-                  onValueChange={(v) => { setCheckInRequired(v); if (!v) setCheckInCode(''); }}
+                  onValueChange={(v) => {
+                    setCheckInRequired(v);
+                    // Only generates a fresh one if there isn't already a
+                    // code — flipping the switch off and back on (or
+                    // reopening an existing event) keeps the same code
+                    // rather than silently invalidating one that's already
+                    // been announced.
+                    if (v) setCheckInCode((prev) => prev || generateCheckInCode());
+                    else setCheckInCode('');
+                  }}
                   trackColor={{ true: colors.red, false: colors.borderStrong }}
                 />
               </View>
               {checkInRequired && (
-                <>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="6-digit code"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    value={checkInCode}
-                    // Digits-only whitelist, enforced as they type — this is
-                    // also what keeps this field safe from injection-style
-                    // input, since nothing but 0-9 can ever reach state (and
-                    // therefore Firestore) in the first place.
-                    onChangeText={(v) => setCheckInCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
-                  />
-                  {checkInCode.length > 0 && checkInCode.length < 6 && (
-                    <Text style={styles.hint}>Code must be exactly 6 digits.</Text>
-                  )}
-                </>
+                <View style={styles.checkInCodeBox}>
+                  <Text style={styles.checkInCodeLabel}>Check-in code</Text>
+                  <Text style={styles.checkInCodeValue}>{checkInCode}</Text>
+                  <Pressable style={styles.regenerateBtn} onPress={() => setCheckInCode(generateCheckInCode())}>
+                    <Ionicons name="refresh" size={14} color={colors.red} />
+                    <Text style={styles.regenerateBtnText}>Generate new code</Text>
+                  </Pressable>
+                </View>
               )}
               <Text style={styles.hint}>
                 Mainly for events — announce the code there and attendees type it in to check in from the
@@ -2346,6 +2350,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   hint: { fontSize: 11, color: colors.textMuted, paddingHorizontal: spacing.sm, paddingTop: spacing.xs },
+  checkInCodeBox: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  checkInCodeLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.3 },
+  checkInCodeValue: { fontSize: 28, fontWeight: '800', color: colors.textPrimary, letterSpacing: 4 },
+  regenerateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacing.xs },
+  regenerateBtnText: { fontSize: 12, fontWeight: '600', color: colors.red },
   addTimeBtn: { padding: spacing.sm },
   addTimeBtnText: { fontSize: 12, color: colors.red, fontWeight: '600' },
   timeRow: { gap: spacing.xs, padding: spacing.sm },

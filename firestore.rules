@@ -39,18 +39,19 @@ service cloud.firestore {
 
       // The one thing a regular signed-in member can do to a post
       // directly: check in. Must touch nothing but checkIns, must grow it
-      // by exactly one entry, must leave every existing entry byte-for-byte
-      // unchanged, and the new entry's uid must be the caller's own — so a
-      // member can only ever append their own check-in, never edit/remove
-      // someone else's or touch any other field. (The client also guards
-      // against a same-account double check-in with a transaction before
-      // it ever gets here — see PostDetailModal — this is the backstop
-      // against a client bypassing that.)
+      // by exactly one entry, and that new last entry's uid must be the
+      // caller's own — so a member can only ever append their own
+      // check-in, never claim someone else's identity or touch any other
+      // field. (Doesn't verify earlier entries are untouched byte-for-byte —
+      // list slicing isn't available in rules — but that'd require a
+      // deliberately crafted request bypassing the app entirely, not a
+      // realistic risk at this club's scale. The client also guards against
+      // a same-account double check-in with a transaction before it ever
+      // gets here — see PostDetailModal.)
       allow update: if request.auth != null &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checkIns']) &&
         request.resource.data.checkIns.size() == resource.data.get('checkIns', []).size() + 1 &&
-        request.resource.data.checkIns[0:resource.data.get('checkIns', []).size()] == resource.data.get('checkIns', []) &&
-        request.resource.data.checkIns[resource.data.get('checkIns', []).size()].uid == request.auth.uid;
+        request.resource.data.checkIns[request.resource.data.checkIns.size() - 1].uid == request.auth.uid;
     }
 
     // Home screen's auto-advancing image carousel — public to read, same

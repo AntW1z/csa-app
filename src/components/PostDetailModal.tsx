@@ -107,7 +107,11 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
         });
       });
       setCheckInOpen(false);
-    } catch {
+    } catch (err) {
+      // Logged rather than swallowed — a rules rejection or transient
+      // Firestore error looks identical to the user either way, but this
+      // is the only trace of which one it actually was.
+      console.warn('Check-in failed:', err);
       setCheckInError('Something went wrong — try again.');
     } finally {
       setSubmittingCheckIn(false);
