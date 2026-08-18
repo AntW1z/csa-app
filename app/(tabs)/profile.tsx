@@ -115,12 +115,21 @@ export default function ProfileScreen() {
     setEditingName(false);
   };
 
-  // 'undetermined' means never asked — requestPermissionsAsync will show
-  // the real OS prompt. Once denied, iOS/Android won't show that prompt
-  // again on request; only the system Settings app can flip it back, so
-  // that's where 'denied' routes to instead of retrying a no-op request.
-  const handleNotifRowPress = async () => {
-    if (notifStatus === 'granted' || notifStatus === 'checking') return;
+  // Once the OS permission is actually granted, the switch controls a
+  // pure in-app preference (notificationsEnabled) — there's no API to
+  // revoke OS notification permission from inside an app, so this field is
+  // what actually determines whether Manage's sends include this device
+  // (see the recipient filters in moderator.tsx and functions/src). Before
+  // permission is granted, there's nothing to toggle off yet, so it falls
+  // through to requesting it instead.
+  const handleNotifToggle = async (nextValue: boolean) => {
+    if (notifStatus === 'checking') return;
+    if (notifStatus === 'granted') {
+      if (!profile) return;
+      await updateDoc(doc(db, 'users', profile.uid), { notificationsEnabled: nextValue });
+      return;
+    }
+    if (!nextValue) return;
     if (notifStatus === 'denied') {
       // openSettings() opens the OS Settings app — there's no equivalent
       // on web, where notification permission lives in the browser's own
@@ -320,14 +329,10 @@ export default function ProfileScreen() {
               <Ionicons name="notifications-outline" size={16} color={colors.red} />
             </View>
             <Text style={styles.settingsLabel}>Notifications</Text>
-            {/* Only ever flips off→on here — there's no API to revoke the
-                OS's own notification permission from inside the app, so
-                once granted this just reflects that (and stops responding
-                to taps) rather than pretending it can turn back off. */}
             <Switch
-              value={notifStatus === 'granted'}
-              onValueChange={handleNotifRowPress}
-              disabled={notifStatus === 'granted' || notifStatus === 'checking'}
+              value={notifStatus === 'granted' && profile?.notificationsEnabled !== false}
+              onValueChange={handleNotifToggle}
+              disabled={notifStatus === 'checking'}
               trackColor={{ true: '#34C759', false: colors.borderStrong }}
             />
           </View>
