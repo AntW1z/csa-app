@@ -1,79 +1,41 @@
-import { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query, where, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../src/firebase';
-import { useAuth } from '../../src/context/AuthContext';
-import PostGrid from '../../src/components/PostGrid';
-import PromoPopup from '../../src/components/PromoPopup';
 import PromoCarousel from '../../src/components/PromoCarousel';
 import PostDetailModal from '../../src/components/PostDetailModal';
-import InfoModal from '../../src/components/InfoModal';
 import { Post, CarouselItem } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
-import { getEventWindow, sortByOrder } from '../../src/utils';
-import { WHAT_IS_CSA } from '../../src/constants';
+import { sortByOrder } from '../../src/utils';
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-function isUpcomingThisWeek(post: Post, now: Date) {
-  const window = getEventWindow(post);
-  if (!window) return false;
-  return window.end >= now && window.start <= new Date(now.getTime() + WEEK_MS);
-}
-
+// Home is just the carousel, full-bleed — no feed, no launch popup. A
+// moderator-curated image already covers "what's worth seeing right now"
+// (see Manage > Home carousel), so a separate list of this week's posts
+// and a separate ad popup were redundant with it rather than additive.
 export default function Home() {
   const router = useRouter();
-  const { profile } = useAuth();
-  const [posts, setPosts] = useState<Post[]>([]);
   const [postsById, setPostsById] = useState<Record<string, Post>>({});
   const [carousel, setCarousel] = useState<CarouselItem[]>([]);
-  const [featuredPost, setFeaturedPost] = useState<Post | null>(null);
-  const [showAd, setShowAd] = useState(false);
   const [detailPost, setDetailPost] = useState<Post | null>(null);
   const [showDetail, setShowDetail] = useState(false);
-  const [showInfo, setShowInfo] = useState(false);
-  const adShownRef = useRef(false);
-
-  const isMemberOrAbove = !!profile && profile.role !== 'user';
 
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, (snap) => {
+    return onSnapshot(q, (snap) => {
       const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Post));
-      const now = new Date();
-      const upcoming = all
-        .filter((p) => (p.visibility === 'everyone' || isMemberOrAbove) && isUpcomingThisWeek(p, now))
-        .sort((a, b) => new Date(a.dateTime ?? 0).getTime() - new Date(b.dateTime ?? 0).getTime());
-      setPosts(upcoming);
       // Keyed by id so a post-linked carousel item can always show that
       // post's *current* image (see resolvedCarousel below) instead of the
       // snapshot copy saved on the carousel item at link time.
       setPostsById(Object.fromEntries(all.map((p) => [p.id, p])));
     });
-    return unsub;
-  }, [isMemberOrAbove]);
+  }, []);
 
   useEffect(() => {
     const q = query(collection(db, 'carouselItems'), orderBy('createdAt', 'asc'));
     return onSnapshot(q, (snap) =>
       setCarousel(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CarouselItem)))
     );
-  }, []);
-
-  useEffect(() => {
-    const q = query(collection(db, 'posts'), where('featured', '==', true), limit(1));
-    return onSnapshot(q, (snap) => {
-      const post = snap.docs[0] ? ({ id: snap.docs[0].id, ...snap.docs[0].data() } as Post) : null;
-      setFeaturedPost(post);
-      // Only ever auto-show the ad once per session, even if the featured
-      // post changes later while the app stays open.
-      if (post && !adShownRef.current) {
-        adShownRef.current = true;
-        setShowAd(true);
-      }
-    });
   }, []);
 
   // A carousel item linked to a post fetches it on demand (they're rarely
@@ -88,66 +50,37 @@ export default function Home() {
     }
   };
 
-  // A post-linked carousel item should always reflect that post's current
-  // image, not the copy saved on the carousel item back when it was linked
-  // — otherwise editing a post's image after adding it to the carousel
-  // silently leaves the old picture rotating on Home.
   const resolvedCarousel = sortByOrder(carousel).map((item) =>
     item.postId && postsById[item.postId] ? { ...item, imageUrl: postsById[item.postId].imageUrl ?? item.imageUrl } : item
   );
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <PromoCarousel items={resolvedCarousel} onPressItem={handleCarouselPress} />
-        <View style={styles.body}>
-          <View style={styles.quickActions}>
-            <Pressable style={styles.quickAction} onPress={() => router.push('/calendar')}>
-              <Ionicons name="calendar-outline" size={16} color={colors.red} />
-              <Text style={styles.quickActionText}>Calendar</Text>
-            </Pressable>
-            <Pressable style={styles.quickAction} onPress={() => setShowInfo(true)}>
-              <Ionicons name="help-circle-outline" size={16} color={colors.red} />
-              <Text style={styles.quickActionText}>What is CSA?</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.sectionLabel}>This week</Text>
-          <PostGrid posts={posts} onPressPost={(post) => { setDetailPost(post); setShowDetail(true); }} />
-          {posts.length === 0 && <Text style={styles.empty}>Nothing happening this week.</Text>}
-        </View>
-      </ScrollView>
-      {featuredPost && showAd && (
-        <PromoPopup
-          post={featuredPost}
-          onSkip={() => setShowAd(false)}
-          onPressImage={() => { setShowAd(false); setDetailPost(featuredPost); setShowDetail(true); }}
-        />
-      )}
+      <PromoCarousel items={resolvedCarousel} onPressItem={handleCarouselPress} />
+
+      <Pressable style={styles.ctaBtn} onPress={() => router.push('/calendar')}>
+        <Text style={styles.ctaBtnText}>Check out Events</Text>
+      </Pressable>
+
       {detailPost && (
         <PostDetailModal post={detailPost} visible={showDetail} onClose={() => setShowDetail(false)} />
       )}
-      <InfoModal visible={showInfo} title="What is CSA?" body={WHAT_IS_CSA} onClose={() => setShowInfo(false)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingBottom: spacing.lg },
-  body: { padding: spacing.lg, gap: spacing.md },
-  sectionLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.3 },
-  quickActions: { flexDirection: 'row', gap: spacing.md },
-  quickAction: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.redSoft,
-    borderRadius: radius.md,
+  ctaBtn: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
     paddingVertical: spacing.md,
+    alignItems: 'center',
     ...shadow.card,
   },
-  quickActionText: { color: colors.redSoftText, fontWeight: '700', fontSize: 13 },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: 40 },
+  ctaBtnText: { fontSize: 16, fontWeight: '800', color: colors.textPrimary },
 });

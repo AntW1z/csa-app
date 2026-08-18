@@ -4,7 +4,6 @@ import { CarouselItem } from '../types';
 import { colors, spacing } from '../theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const HEIGHT = 320;
 const AUTO_ADVANCE_MS = 4000;
 
 // What happens on tap (open a post's detail, or nothing for a plain image)
@@ -54,6 +53,7 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
     <View style={styles.wrap}>
       <FlatList
         ref={listRef}
+        style={styles.list}
         data={loopedItems}
         horizontal
         pagingEnabled
@@ -77,10 +77,11 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
           }
         }}
         renderItem={({ item }) => (
-          <Pressable onPress={() => onPressItem(item)} disabled={!item.postId}>
-            {/* "contain" so a tall poster shows in full (letterboxed) instead
-                of "cover" cropping it to fill this short, wide strip. */}
-            <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="contain" />
+          <Pressable style={styles.slide} onPress={() => onPressItem(item)} disabled={!item.postId}>
+            {/* "cover" so the image fills the screen edge-to-edge like a
+                hero photo, matching a full-bleed home page — letterboxing
+                ("contain") looked right for a short strip, not a full page. */}
+            <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="cover" />
           </Pressable>
         )}
       />
@@ -96,8 +97,10 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
 }
 
 const styles = StyleSheet.create({
-  wrap: { width: '100%', height: HEIGHT },
-  image: { width: SCREEN_WIDTH, height: HEIGHT, backgroundColor: colors.surfaceMuted },
+  wrap: { width: '100%', flex: 1 },
+  list: { flex: 1 },
+  slide: { width: SCREEN_WIDTH, height: '100%' },
+  image: { width: '100%', height: '100%', backgroundColor: colors.surfaceMuted },
   dots: {
     position: 'absolute',
     bottom: spacing.sm,

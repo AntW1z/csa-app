@@ -877,21 +877,6 @@ export default function ModeratorScreen() {
     reorderCarousel(data);
   };
 
-  // At most one post is featured at a time — starring a new one un-stars
-  // whichever one currently holds it, using the already-live `posts` list
-  // rather than an extra query.
-  const toggleFeatured = async (post: Post) => {
-    if (post.featured) {
-      await updateDoc(doc(db, 'posts', post.id), { featured: false });
-      logAction(`Unfeatured post "${post.title}"`);
-      return;
-    }
-    const prevFeatured = posts.find((p) => p.featured && p.id !== post.id);
-    if (prevFeatured) await updateDoc(doc(db, 'posts', prevFeatured.id), { featured: false });
-    await updateDoc(doc(db, 'posts', post.id), { featured: true });
-    logAction(`Featured post "${post.title}" as the launch popup`);
-  };
-
   // Year clears every member regardless of term (a full academic year ending
   // means everyone's membership lapses); semester only clears members who
   // specifically paid for a semester, leaving full-year members untouched.
@@ -1054,14 +1039,10 @@ export default function ModeratorScreen() {
                     <Ionicons name="add-circle-outline" size={18} color={colors.red} />
                     <Text style={styles.addBtnText}>New post</Text>
                   </Pressable>
-                  <Text style={styles.hint}>Star one post to feature it as the full-screen launch popup on Home.</Text>
                 </View>
               }
               renderItem={({ item }) => (
                 <View style={styles.postRow}>
-                  <Pressable onPress={() => toggleFeatured(item)} hitSlop={8}>
-                    <Ionicons name={item.featured ? 'star' : 'star-outline'} size={18} color={item.featured ? colors.amber : colors.textMuted} />
-                  </Pressable>
                   <View style={[styles.postTag, { backgroundColor: tagStyle[item.type].bg }]}>
                     <Text style={[styles.postTagText, { color: tagStyle[item.type].text }]}>{item.type}</Text>
                   </View>

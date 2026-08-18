@@ -49,9 +49,6 @@ export interface Post {
   locationText?: string;
   visibility: Visibility;
   imageUrl?: string;
-  // At most one post is featured at a time — that's the one used as the
-  // full-screen launch popup on Home. Moderators toggle this in Manage.
-  featured?: boolean;
   // Every non-all-day event automatically gets a "starting now" push when
   // its start time arrives — always on, not configurable. Off by default
   // is the *additional* early reminder ("starting in N mins"), which a

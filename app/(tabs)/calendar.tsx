@@ -89,7 +89,7 @@ export default function CalendarScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Calendar</Text>
+      <Text style={styles.header}>Events</Text>
 
       <View style={styles.searchBar}>
         <Ionicons name="search-outline" size={16} color={colors.textMuted} />
