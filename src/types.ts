@@ -98,6 +98,19 @@ export interface PushMessage {
   createdAt: any;
 }
 
+// A bug report or suggestion submitted from the "What is CSA?" info popup
+// in Profile — visible to every moderator (not admin-only), since triaging
+// these is routine moderator work rather than sensitive account data.
+export interface Feedback {
+  id: string;
+  message: string;
+  submittedByUid: string;
+  submittedByName: string;
+  submittedByEmail: string;
+  status: 'new' | 'reviewed';
+  createdAt: any;
+}
+
 // Shown as an auto-advancing image strip at the top of Home. Either linked
 // to an existing post (image + tap-to-open-detail both come from that post
 // automatically) or a plain manually-added image with no tap behavior at

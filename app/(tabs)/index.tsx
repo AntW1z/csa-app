@@ -13,6 +13,7 @@ import InfoModal from '../../src/components/InfoModal';
 import { Post, CarouselItem } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 import { getEventWindow, sortByOrder } from '../../src/utils';
+import { WHAT_IS_CSA } from '../../src/constants';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -21,10 +22,6 @@ function isUpcomingThisWeek(post: Post, now: Date) {
   if (!window) return false;
   return window.end >= now && window.start <= new Date(now.getTime() + WEEK_MS);
 }
-
-const WHAT_IS_CSA = `CSA (Chinese Student Association) is a student-run club bringing together anyone interested in Chinese culture and community. We host general body meetings, cultural events, socials, and collaborations with other orgs throughout the year.
-
-(Filler text — swap this out for your club's real description.)`;
 
 export default function Home() {
   const router = useRouter();

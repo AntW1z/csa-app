@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
-import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorCategory, SponsorKind } from '../../src/types';
+import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorCategory, SponsorKind, Feedback } from '../../src/types';
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
 import { formatEventTimeRange, isPromoLive, sortByOrder } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
@@ -269,6 +269,8 @@ export default function ModeratorScreen() {
   const [clearStep, setClearStep] = useState<'idle' | 'choose' | 'confirm'>('idle');
   const [clearTerm, setClearTerm] = useState<'year' | 'semester' | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [feedback, setFeedback] = useState<Feedback[]>([]);
+  const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
   const [showLogsPanel, setShowLogsPanel] = useState(false);
   const [showNonMemberEmails, setShowNonMemberEmails] = useState(false);
   const [accountSearch, setAccountSearch] = useState('');
@@ -378,6 +380,23 @@ export default function ModeratorScreen() {
       (err) => console.warn('logs listener error', err)
     );
   }, [profile?.role]);
+
+  // Bug reports/suggestions from Profile's "What is CSA?" popup — every
+  // moderator can see these (not admin-only like Logs), since triaging
+  // them is routine moderator work.
+  useEffect(() => {
+    if (!profile) return;
+    const q = query(collection(db, 'feedback'), orderBy('createdAt', 'desc'));
+    return onSnapshot(
+      q,
+      (snap) => setFeedback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Feedback))),
+      (err) => console.warn('feedback listener error', err)
+    );
+  }, [profile?.uid]);
+
+  const toggleFeedbackStatus = (item: Feedback) => {
+    updateDoc(doc(db, 'feedback', item.id), { status: item.status === 'new' ? 'reviewed' : 'new' });
+  };
 
   // Fire-and-forget audit trail — every moderation action writes one of
   // these. Moderators' actions still get logged, only an admin can view it.
@@ -998,6 +1017,25 @@ export default function ModeratorScreen() {
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
         )}
+
+        <Pressable style={styles.memberMgmtCard} onPress={() => setShowFeedbackPanel(true)}>
+          <View style={styles.memberMgmtIcon}>
+            <Ionicons name="chatbox-ellipses-outline" size={18} color={colors.red} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.memberMgmtText}>Feedback</Text>
+            <Text style={styles.cardSubtitle}>
+              {feedback.length} submitted
+              {feedback.filter((f) => f.status === 'new').length > 0 ? ` · ${feedback.filter((f) => f.status === 'new').length} new` : ''}
+            </Text>
+          </View>
+          {feedback.filter((f) => f.status === 'new').length > 0 && (
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>{feedback.filter((f) => f.status === 'new').length}</Text>
+            </View>
+          )}
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
       </ScrollView>
 
       {showPostsPanel && (
@@ -2021,6 +2059,38 @@ export default function ModeratorScreen() {
                   )}
                 </View>
               )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {showFeedbackPanel && (
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Pressable style={styles.closeBtn} onPress={() => setShowFeedbackPanel(false)} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+            <ScrollView>
+              <Text style={styles.header}>Feedback ({feedback.length})</Text>
+              <Text style={styles.hint}>Suggestions and bug reports submitted from the "What is CSA?" popup in Profile.</Text>
+              {feedback.length === 0 && <Text style={styles.empty}>Nothing submitted yet.</Text>}
+              {feedback.map((item) => (
+                <View key={item.id} style={styles.logRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
+                    <Text style={[styles.logMessage, { flex: 1 }]}>{item.message}</Text>
+                    <View style={[styles.roleTag, item.status === 'new' && { backgroundColor: colors.redSoft }]}>
+                      <Text style={[styles.roleTagText, item.status === 'new' && { color: colors.redSoftText }]}>{item.status}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.logMeta}>
+                    {item.submittedByName} · {item.submittedByEmail}
+                    {item.createdAt?.toDate ? ` · ${item.createdAt.toDate().toLocaleString()}` : ''}
+                  </Text>
+                  <Pressable onPress={() => toggleFeedbackStatus(item)} hitSlop={8} style={{ marginTop: spacing.xs }}>
+                    <Text style={styles.editText}>{item.status === 'new' ? 'Mark reviewed' : 'Mark new'}</Text>
+                  </Pressable>
+                </View>
+              ))}
             </ScrollView>
           </View>
         </View>
