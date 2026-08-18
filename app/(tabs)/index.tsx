@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { collection, onSnapshot, orderBy, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../src/firebase';
@@ -17,6 +17,7 @@ export default function Home() {
   const router = useRouter();
   const [postsById, setPostsById] = useState<Record<string, Post>>({});
   const [carousel, setCarousel] = useState<CarouselItem[]>([]);
+  const [carouselLoading, setCarouselLoading] = useState(true);
   const [detailPost, setDetailPost] = useState<Post | null>(null);
   const [showDetail, setShowDetail] = useState(false);
 
@@ -33,9 +34,10 @@ export default function Home() {
 
   useEffect(() => {
     const q = query(collection(db, 'carouselItems'), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, (snap) =>
-      setCarousel(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CarouselItem)))
-    );
+    return onSnapshot(q, (snap) => {
+      setCarousel(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CarouselItem)));
+      setCarouselLoading(false);
+    });
   }, []);
 
   // A carousel item linked to a post fetches it on demand (they're rarely
@@ -56,7 +58,17 @@ export default function Home() {
 
   return (
     <View style={styles.container}>
-      <PromoCarousel items={resolvedCarousel} onPressItem={handleCarouselPress} />
+      {/* Firestore's first response is variable-latency (network/cache
+          dependent) — without this, the gap before it arrives rendered as
+          a fully blank white screen instead of the small, easy-to-miss gap
+          it used to be back when the carousel was just a short strip. */}
+      {carouselLoading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={colors.red} />
+        </View>
+      ) : (
+        <PromoCarousel items={resolvedCarousel} onPressItem={handleCarouselPress} />
+      )}
 
       <Pressable style={styles.ctaBtn} onPress={() => router.push('/calendar')}>
         <Text style={styles.ctaBtnText}>Check out Events</Text>
@@ -71,6 +83,7 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   ctaBtn: {
     position: 'absolute',
     left: spacing.lg,

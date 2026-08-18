@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Image, Pressable, FlatList, StyleSheet, Dimensions } from 'react-native';
+import { View, Image, Pressable, FlatList, StyleSheet, useWindowDimensions } from 'react-native';
 import { CarouselItem } from '../types';
 import { colors, spacing } from '../theme';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const AUTO_ADVANCE_MS = 4000;
 
 // What happens on tap (open a post's detail, or nothing for a plain image)
 // is decided by the caller, since a post-linked item needs a Firestore
 // fetch that only Home has the context to do.
 export default function PromoCarousel({ items, onPressItem }: { items: CarouselItem[]; onPressItem: (item: CarouselItem) => void }) {
+  // A reactive hook, not a one-time Dimensions.get() snapshot — on web
+  // especially, the window can be a different size than whatever it read
+  // at module-load time (or resize later), which would silently desync
+  // this from the FlatList's actual rendered slide width and break paging.
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
   const listRef = useRef<FlatList<CarouselItem>>(null);
   // Index into the *real* items array, not the padded one below — dots and
   // the auto-advance target both stay in this space so nothing else needs
@@ -77,7 +81,7 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
           }
         }}
         renderItem={({ item }) => (
-          <Pressable style={styles.slide} onPress={() => onPressItem(item)} disabled={!item.postId}>
+          <Pressable style={[styles.slide, { width: SCREEN_WIDTH }]} onPress={() => onPressItem(item)} disabled={!item.postId}>
             {/* "cover" so the image fills the screen edge-to-edge like a
                 hero photo, matching a full-bleed home page — letterboxing
                 ("contain") looked right for a short strip, not a full page. */}
@@ -99,7 +103,7 @@ export default function PromoCarousel({ items, onPressItem }: { items: CarouselI
 const styles = StyleSheet.create({
   wrap: { width: '100%', flex: 1 },
   list: { flex: 1 },
-  slide: { width: SCREEN_WIDTH, height: '100%' },
+  slide: { height: '100%' },
   image: { width: '100%', height: '100%', backgroundColor: colors.surfaceMuted },
   dots: {
     position: 'absolute',
