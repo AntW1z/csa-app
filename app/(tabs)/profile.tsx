@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, Modal, ScrollView, Linking, Platform, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, ScrollView, Linking, Platform, Switch, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -315,16 +315,22 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
 
-          <Pressable style={styles.settingsRow} onPress={handleNotifRowPress}>
+          <View style={styles.settingsRow}>
             <View style={styles.settingsIcon}>
               <Ionicons name="notifications-outline" size={16} color={colors.red} />
             </View>
             <Text style={styles.settingsLabel}>Notifications</Text>
-            <Text style={styles.settingsValue}>
-              {notifStatus === 'granted' ? 'Enabled' : notifStatus === 'checking' ? '' : 'Disabled'}
-            </Text>
-            {notifStatus !== 'granted' && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
-          </Pressable>
+            {/* Only ever flips off→on here — there's no API to revoke the
+                OS's own notification permission from inside the app, so
+                once granted this just reflects that (and stops responding
+                to taps) rather than pretending it can turn back off. */}
+            <Switch
+              value={notifStatus === 'granted'}
+              onValueChange={handleNotifRowPress}
+              disabled={notifStatus === 'granted' || notifStatus === 'checking'}
+              trackColor={{ true: '#34C759', false: colors.borderStrong }}
+            />
+          </View>
 
           <Pressable style={styles.settingsRow} onPress={() => setShowCsaInfo(true)}>
             <View style={styles.settingsIcon}>
@@ -616,7 +622,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   settingsLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary },
-  settingsValue: { fontSize: 13, color: colors.textMuted },
   versionText: { textAlign: 'center', fontSize: 12, color: colors.textMuted },
   feedbackSection: { marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border },
   feedbackLabel: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
