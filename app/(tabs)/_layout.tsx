@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
-import { colors, spacing } from '../../src/theme';
+import { colors, radius, spacing } from '../../src/theme';
 
 function ProfileHeaderButton() {
   const router = useRouter();
@@ -19,6 +19,35 @@ function NotificationsHeaderButton() {
   if (!firebaseUser) return null;
   return (
     <Pressable onPress={() => router.push('/notifications')} hitSlop={8} style={styles.notifBtn}>
+      <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
+      {unreadCount > 0 && (
+        <View style={styles.notifBadge}>
+          <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+// Home's header floats transparently over the full-bleed carousel instead
+// of sitting on its own opaque bar (see the "index" Tabs.Screen below) — a
+// white circular backdrop keeps these icons legible no matter what's
+// behind them in the image, the same way the reference design does it.
+function FloatingProfileButton() {
+  const router = useRouter();
+  return (
+    <Pressable onPress={() => router.push('/profile')} hitSlop={8} style={[styles.profileBtn, styles.floatingIconBg]}>
+      <Ionicons name="person-circle-outline" size={28} color={colors.textPrimary} />
+    </Pressable>
+  );
+}
+
+function FloatingNotificationsButton() {
+  const router = useRouter();
+  const { firebaseUser, unreadCount } = useAuth();
+  if (!firebaseUser) return null;
+  return (
+    <Pressable onPress={() => router.push('/notifications')} hitSlop={8} style={[styles.notifBtn, styles.floatingIconBg]}>
       <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
       {unreadCount > 0 && (
         <View style={styles.notifBadge}>
@@ -53,6 +82,10 @@ export default function TabsLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+          headerTransparent: true,
+          headerStyle: { backgroundColor: 'transparent' },
+          headerLeft: () => <FloatingProfileButton />,
+          headerRight: () => <FloatingNotificationsButton />,
         }}
       />
       <Tabs.Screen
@@ -111,6 +144,7 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   profileBtn: { marginLeft: spacing.lg },
   notifBtn: { marginRight: spacing.lg },
+  floatingIconBg: { backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: radius.pill, padding: 4 },
   notifBadge: {
     position: 'absolute',
     top: -4,

@@ -78,6 +78,8 @@ const styles = StyleSheet.create({
     bottom: spacing.xl,
     backgroundColor: colors.surface,
     borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.textPrimary,
     paddingVertical: spacing.md,
     alignItems: 'center',
     ...shadow.card,
