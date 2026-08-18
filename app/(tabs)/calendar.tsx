@@ -47,15 +47,22 @@ export default function EventsScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('week');
-  const [detailPost, setDetailPost] = useState<Post | null>(null);
+  // An id, not a captured Post object — the modal below looks its post up
+  // in `posts` on every render, so it always reflects whatever the live
+  // Firestore listener has, including this account's own check-in write
+  // landing seconds later. Holding onto a snapshot object here instead
+  // meant the modal could go stale until it got reopened (or the whole
+  // app reloaded) to re-capture a fresh one.
+  const [detailPostId, setDetailPostId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const isMemberOrAbove = !!profile && profile.role !== 'user';
   const isModeratorOrAbove = profile?.role === 'moderator' || profile?.role === 'admin';
 
   const openDetail = (post: Post) => {
-    setDetailPost(post);
+    setDetailPostId(post.id);
     setShowDetail(true);
   };
+  const detailPost = detailPostId ? posts.find((p) => p.id === detailPostId) ?? null : null;
 
   useEffect(() => {
     // No orderBy here deliberately — combining it with the where() below

@@ -18,7 +18,11 @@ export default function Home() {
   const [postsById, setPostsById] = useState<Record<string, Post>>({});
   const [carousel, setCarousel] = useState<CarouselItem[]>([]);
   const [carouselLoading, setCarouselLoading] = useState(true);
-  const [detailPost, setDetailPost] = useState<Post | null>(null);
+  // An id, not a captured Post object — looked up in postsById (already
+  // kept live by the listener below) on every render, so e.g. this
+  // account's own check-in write shows up immediately instead of needing
+  // the modal reopened to re-fetch a fresh copy.
+  const [detailPostId, setDetailPostId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
 
   useEffect(() => {
@@ -47,10 +51,11 @@ export default function Home() {
     if (!item.postId) return;
     const snap = await getDoc(doc(db, 'posts', item.postId));
     if (snap.exists()) {
-      setDetailPost({ id: snap.id, ...snap.data() } as Post);
+      setDetailPostId(item.postId);
       setShowDetail(true);
     }
   };
+  const detailPost = detailPostId ? postsById[detailPostId] ?? null : null;
 
   const resolvedCarousel = sortByOrder(carousel).map((item) =>
     item.postId && postsById[item.postId] ? { ...item, imageUrl: postsById[item.postId].imageUrl ?? item.imageUrl } : item
