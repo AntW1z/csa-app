@@ -5,7 +5,7 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { Sponsor, SponsorCategory, SponsorKind } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
-import { isPromoLive, sortByOrder } from '../../src/utils';
+import { sortByOrder, toDateString } from '../../src/utils';
 
 const ROW_CARD_WIDTH = 150;
 
@@ -26,6 +26,17 @@ const resolveCategory = (s: Sponsor): SponsorCategory =>
 // Sponsors created before the kind picker existed have no `kind` field —
 // they're all "information" (the only kind that used to exist).
 const resolveSponsorKind = (s: Sponsor): SponsorKind => (s.kind === 'event' ? 'event' : 'information');
+
+// Events are what "limited-time" means now (the old standalone promo
+// field on information sponsors was removed) — once an event's last day
+// has passed it drops off the Sponsors tab automatically, the same way
+// the old promo used to disappear once its date range ended. An event
+// with no date at all (never required) just always shows, same as an
+// undated post elsewhere in this app.
+const isEventLive = (s: Sponsor): boolean => {
+  const lastDay = s.eventEndDate ?? s.eventDate;
+  return !lastDay || lastDay >= toDateString(new Date());
+};
 
 const formatEventDate = (d?: string) => {
   if (!d) return '';
@@ -53,18 +64,12 @@ export default function SponsorsScreen() {
 
   const sorted = sortByOrder(sponsors);
   const informationSponsors = sorted.filter((s) => resolveSponsorKind(s) === 'information');
-  const events = sorted.filter((s) => resolveSponsorKind(s) === 'event');
+  const events = sorted.filter((s) => resolveSponsorKind(s) === 'event' && isEventLive(s));
 
-  const liveOffers = informationSponsors.filter(isPromoLive);
-  // While a sponsor's deal is live, they're already shown in the offers
-  // row above — showing them again in their category row too would just
-  // duplicate the same sponsor twice on the same page. Once the offer's
-  // date range passes, isPromoLive stops matching and they reappear here
-  // automatically, no moderator action needed either way.
   const rows = CATEGORY_ORDER.map((cat) => ({
     category: cat,
     label: CATEGORY_LABEL[cat],
-    items: informationSponsors.filter((s) => resolveCategory(s) === cat && !isPromoLive(s)),
+    items: informationSponsors.filter((s) => resolveCategory(s) === cat),
   })).filter((r) => r.items.length > 0);
 
   const openLink = (url: string) => Linking.openURL(url);
@@ -98,23 +103,6 @@ export default function SponsorsScreen() {
           </View>
         )}
 
-        {liveOffers.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Limited-time offers</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowContent}>
-              {liveOffers.map((s) => (
-                <Pressable key={s.id} style={styles.banner} onPress={() => setSelected(s)}>
-                  <Image source={{ uri: s.imageUrl }} style={styles.bannerImage} resizeMode="cover" />
-                  <View style={styles.bannerOverlay}>
-                    <Text style={styles.bannerPromo} numberOfLines={2}>{s.promoText}</Text>
-                    <Text style={styles.bannerName}>{s.name}</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
         {rows.map((row) => (
           <View key={row.category} style={styles.section}>
             <Text style={styles.sectionLabel}>{row.label}</Text>
@@ -123,11 +111,6 @@ export default function SponsorsScreen() {
                 <Pressable key={s.id} style={styles.card} onPress={() => setSelected(s)}>
                   <View style={styles.cardImageWrap}>
                     <Image source={{ uri: s.imageUrl }} style={styles.cardImage} resizeMode="cover" />
-                    {isPromoLive(s) && (
-                      <View style={styles.promoRibbon}>
-                        <Text style={styles.promoRibbonText}>OFFER</Text>
-                      </View>
-                    )}
                   </View>
                   <Text style={styles.name} numberOfLines={1}>{s.name}</Text>
                 </Pressable>
@@ -166,13 +149,6 @@ export default function SponsorsScreen() {
                     <Text style={styles.sponsorCreditName} numberOfLines={1}>{linkedSponsor.name}</Text>
                     <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
                   </Pressable>
-                )}
-
-                {isPromoLive(selected) && (
-                  <View style={styles.detailPromoBox}>
-                    <Text style={styles.detailPromoLabel}>LIMITED-TIME OFFER</Text>
-                    <Text style={styles.detailPromoText}>{selected.promoText}</Text>
-                  </View>
                 )}
 
                 {selected.description ? <Text style={styles.detailDescription}>{selected.description}</Text> : null}
@@ -229,16 +205,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceMuted,
   },
-  promoRibbon: {
-    position: 'absolute',
-    top: spacing.xs,
-    right: spacing.xs,
-    backgroundColor: colors.red,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  promoRibbonText: { color: colors.onAccent, fontSize: 9, fontWeight: '800' },
   name: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, marginTop: spacing.xs },
   cardSubtext: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
 
@@ -286,14 +252,6 @@ const styles = StyleSheet.create({
   sponsorCreditLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
   sponsorCreditAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.surface },
   sponsorCreditName: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, maxWidth: 140 },
-  detailPromoBox: {
-    backgroundColor: colors.redSoft,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: 2,
-  },
-  detailPromoLabel: { color: colors.redSoftText, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
-  detailPromoText: { color: colors.redSoftText, fontSize: 14, fontWeight: '700' },
   detailDescription: { fontSize: 14, color: colors.textSecondary, lineHeight: 21 },
   ctaBtn: {
     flexDirection: 'row',

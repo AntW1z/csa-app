@@ -11,7 +11,7 @@ import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorCategory, SponsorKind, Feedback } from '../../src/types';
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
-import { formatEventTimeRange, isPromoLive, sortByOrder } from '../../src/utils';
+import { formatEventTimeRange, sortByOrder } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
 import ImagePickerField from '../../src/components/ImagePickerField';
 
@@ -296,10 +296,6 @@ export default function ModeratorScreen() {
   const [sponsorDescription, setSponsorDescription] = useState('');
   const [sponsorCategory, setSponsorCategory] = useState<SponsorCategory>('food');
   const [sponsorLinks, setSponsorLinks] = useState<{ label: string; url: string }[]>([{ label: '', url: '' }]);
-  const [sponsorHasPromo, setSponsorHasPromo] = useState(false);
-  const [sponsorPromoText, setSponsorPromoText] = useState('');
-  const [sponsorPromoStartDate, setSponsorPromoStartDate] = useState<string | null>(null);
-  const [sponsorPromoEndDate, setSponsorPromoEndDate] = useState<string | null>(null);
   const [sponsorKind, setSponsorKind] = useState<SponsorKind>('information');
   const [sponsorEventDate, setSponsorEventDate] = useState<string | null>(null);
   const [sponsorEventEndDate, setSponsorEventEndDate] = useState<string | null>(null);
@@ -606,11 +602,6 @@ export default function ModeratorScreen() {
           <View style={styles.roleTag}>
             <Text style={styles.roleTagText}>{resolveSponsorKind(s) === 'event' ? 'Event' : 'Sponsor'}</Text>
           </View>
-          {isPromoLive(s) && (
-            <View style={styles.roleTag}>
-              <Text style={styles.roleTagText}>Live offer</Text>
-            </View>
-          )}
         </View>
       </View>
       <Pressable onPress={() => openEditSponsor(s)} hitSlop={8}>
@@ -644,8 +635,6 @@ export default function ModeratorScreen() {
     setSponsorKind(kind);
     setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription('');
     setSponsorCategory('food'); setSponsorLinks([{ label: '', url: '' }]);
-    setSponsorHasPromo(false); setSponsorPromoText('');
-    setSponsorPromoStartDate(null); setSponsorPromoEndDate(null);
     setSponsorEventDate(null); setSponsorEventEndDate(null); setSponsorEventIsRange(false);
     setSponsorLinkedSponsorId(null);
     setSponsorImageUploading(false);
@@ -661,10 +650,6 @@ export default function ModeratorScreen() {
     setSponsorDescription(s.description ?? '');
     setSponsorCategory(s.category ?? 'food');
     setSponsorLinks(s.links && s.links.length > 0 ? s.links : [{ label: '', url: '' }]);
-    setSponsorHasPromo(!!s.promoText);
-    setSponsorPromoText(s.promoText ?? '');
-    setSponsorPromoStartDate(s.promoStartDate ?? null);
-    setSponsorPromoEndDate(s.promoEndDate ?? null);
     setSponsorEventDate(s.eventDate ?? null);
     setSponsorEventEndDate(s.eventEndDate ?? null);
     setSponsorEventIsRange(!!s.eventEndDate);
@@ -685,13 +670,7 @@ export default function ModeratorScreen() {
 
   const removeSponsorLink = (index: number) => setSponsorLinks((prev) => prev.filter((_, i) => i !== index));
 
-  // Once "Limited-time offer" is toggled on, all three fields are required
-  // to save — this is what prevents ending up with promo text but no
-  // dates (which silently never shows up anywhere, since isPromoLive
-  // requires all three). Event-kind sponsors skip promo validation
-  // entirely, since that's an information-kind-only concept.
   const canSaveSponsor = !!(sponsorName.trim() && sponsorImageUrl.trim()) && !sponsorImageUploading &&
-    (sponsorKind === 'event' || !sponsorHasPromo || !!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate)) &&
     (sponsorKind === 'information' || !sponsorEventIsRange || !!sponsorEventEndDate);
 
   const saveSponsor = async () => {
@@ -723,12 +702,11 @@ export default function ModeratorScreen() {
         ...linksField,
       };
     } else {
-      // deleteField() only works against an existing doc (updateDoc) — for
-      // a brand-new sponsor with the toggle off, there's nothing to clear,
-      // so the promo fields are just omitted entirely rather than "deleted".
-      const promoFields = sponsorHasPromo
-        ? { promoText: sponsorPromoText.trim(), promoStartDate: sponsorPromoStartDate, promoEndDate: sponsorPromoEndDate }
-        : editingSponsor
+      // The "Limited-time offer" concept is gone — a sponsor event (with
+      // its own date range) now covers what this used to. Clearing these
+      // on every save cleans up leftover promo data on any sponsor that
+      // had one before, without needing a separate migration.
+      const promoFields = editingSponsor
         ? { promoText: deleteField(), promoStartDate: deleteField(), promoEndDate: deleteField() }
         : {};
       kindFields = { category: sponsorCategory, ...linksField, ...promoFields };
@@ -1597,10 +1575,8 @@ export default function ModeratorScreen() {
                 </Pressable>
               </View>
               <Text style={styles.hint}>
-                A limited-time offer (promo text + start/end dates) automatically appears at the top of
-                the Sponsors tab while today falls within that range, and disappears after — nothing to
-                remember to turn off. A standing/year-round deal just belongs in the description instead.
-                A sponsor event can optionally link to a sponsor's own page instead of repeating who they are.
+                A sponsor event automatically appears at the top of the Sponsors tab while its date range
+                is current, and can optionally link to a sponsor's own page instead of repeating who they are.
                 {Platform.OS === 'web' ? ' Use the arrows' : ' Drag by the handle'} to reorder how sponsors appear within each row on the Sponsors tab.
               </Text>
               {sponsors.length === 0 && <Text style={styles.empty}>No sponsors yet.</Text>}
@@ -1723,33 +1699,6 @@ export default function ModeratorScreen() {
                     <Ionicons name="add-circle-outline" size={16} color={colors.red} />
                     <Text style={styles.addBtnText}>Add another link</Text>
                   </Pressable>
-
-                  <View style={styles.row}>
-                    <Text style={styles.rowLabel}>Limited-time offer</Text>
-                    <Switch
-                      value={sponsorHasPromo}
-                      onValueChange={setSponsorHasPromo}
-                      trackColor={{ true: colors.red, false: colors.borderStrong }}
-                    />
-                  </View>
-                  {sponsorHasPromo && (
-                    <>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="e.g. BOGO boba this weekend! (required)"
-                        placeholderTextColor={colors.textMuted}
-                        value={sponsorPromoText}
-                        onChangeText={setSponsorPromoText}
-                      />
-                      {/* Stacked, not side-by-side — two half-width Calendar grids
-                          were too cramped to tap a specific day reliably. */}
-                      <SimpleDateField label="Start date (required)" value={sponsorPromoStartDate} onChange={setSponsorPromoStartDate} />
-                      <SimpleDateField label="End date (required)" value={sponsorPromoEndDate} onChange={setSponsorPromoEndDate} />
-                      {!(sponsorPromoText.trim() && sponsorPromoStartDate && sponsorPromoEndDate) && (
-                        <Text style={styles.hint}>Fill in the offer text and both dates to save.</Text>
-                      )}
-                    </>
-                  )}
                 </>
               ) : (
                 <>

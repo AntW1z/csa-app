@@ -181,16 +181,6 @@ export interface Sponsor {
   // Shared by both kinds — an event can link out too (tickets, RSVP, the
   // sponsor's own site), same as an information sponsor's CTA buttons.
   links?: SponsorLink[];
-  // A time-boxed offer ("BOGO this weekend!"), separate from the
-  // evergreen `description` — a standing/year-round deal belongs in
-  // description instead, since it never needs to appear/disappear.
-  // promoStartDate/EndDate (YYYY-MM-DD) bound when this is actually live;
-  // computed client-side (see src/utils.ts isPromoLive), nothing
-  // automatically toggles it off — it just stops matching once the date
-  // range passes, no moderator action needed at either end.
-  promoText?: string;
-  promoStartDate?: string;
-  promoEndDate?: string;
   // 'event' kind only:
   eventDate?: string;
   // Optional — when set, the event spans a period (eventDate through
