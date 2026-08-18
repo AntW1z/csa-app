@@ -9,11 +9,12 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
-import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorCategory, SponsorKind, Feedback } from '../../src/types';
+import { Post, UserProfile, CarouselItem, LogEntry, UserRole, MembershipTerm, Visibility, PushMessage, Sponsor, SponsorCategory, SponsorKind, SponsorLink, Feedback } from '../../src/types';
 import { colors, radius, spacing, shadow, tagStyle } from '../../src/theme';
-import { formatEventTimeRange, sortByOrder } from '../../src/utils';
+import { formatEventTimeRange, sortByOrder, yearBreakdown, averageYear } from '../../src/utils';
 import { sendPushToTokens } from '../../src/notifications';
 import ImagePickerField from '../../src/components/ImagePickerField';
+import PieChart from '../../src/components/PieChart';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const toDateString = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -252,6 +253,7 @@ export default function ModeratorScreen() {
   const [description, setDescription] = useState('');
   const [eventRange, setEventRange] = useState<TimeRange>({ start: null, end: null, allDay: true });
   const [locationText, setLocationText] = useState('');
+  const [checkInCode, setCheckInCode] = useState('');
   const [visibility, setVisibility] = useState<'everyone' | 'members'>('everyone');
   const [type] = useState<'event' | 'announcement' | 'collab'>('event');
   const [imageUrl, setImageUrl] = useState('');
@@ -288,6 +290,8 @@ export default function ModeratorScreen() {
   const [sendingNotif, setSendingNotif] = useState<PushMessage | null>(null);
   const [sponsors, setSponsors] = useState<Sponsor[]>([]);
   const [showSponsorsPanel, setShowSponsorsPanel] = useState(false);
+  const [showStatsPanel, setShowStatsPanel] = useState(false);
+  const [statsEventId, setStatsEventId] = useState<string | null>(null);
   const [showNewSponsor, setShowNewSponsor] = useState(false);
   const [editingSponsor, setEditingSponsor] = useState<Sponsor | null>(null);
   const [sponsorName, setSponsorName] = useState('');
@@ -295,7 +299,7 @@ export default function ModeratorScreen() {
   const [sponsorImageUploading, setSponsorImageUploading] = useState(false);
   const [sponsorDescription, setSponsorDescription] = useState('');
   const [sponsorCategory, setSponsorCategory] = useState<SponsorCategory>('food');
-  const [sponsorLinks, setSponsorLinks] = useState<{ label: string; url: string }[]>([{ label: '', url: '' }]);
+  const [sponsorLinks, setSponsorLinks] = useState<SponsorLink[]>([{ label: '', url: '', type: 'link' }]);
   const [sponsorKind, setSponsorKind] = useState<SponsorKind>('information');
   const [sponsorEventDate, setSponsorEventDate] = useState<string | null>(null);
   const [sponsorEventEndDate, setSponsorEventEndDate] = useState<string | null>(null);
@@ -634,7 +638,7 @@ export default function ModeratorScreen() {
     setEditingSponsor(null);
     setSponsorKind(kind);
     setSponsorName(''); setSponsorImageUrl(''); setSponsorDescription('');
-    setSponsorCategory('food'); setSponsorLinks([{ label: '', url: '' }]);
+    setSponsorCategory('food'); setSponsorLinks([{ label: '', url: '', type: 'link' }]);
     setSponsorEventDate(null); setSponsorEventEndDate(null); setSponsorEventIsRange(false);
     setSponsorLinkedSponsorId(null);
     setSponsorImageUploading(false);
@@ -649,7 +653,7 @@ export default function ModeratorScreen() {
     setSponsorImageUploading(false);
     setSponsorDescription(s.description ?? '');
     setSponsorCategory(s.category ?? 'food');
-    setSponsorLinks(s.links && s.links.length > 0 ? s.links : [{ label: '', url: '' }]);
+    setSponsorLinks(s.links && s.links.length > 0 ? s.links : [{ label: '', url: '', type: 'link' }]);
     setSponsorEventDate(s.eventDate ?? null);
     setSponsorEventEndDate(s.eventEndDate ?? null);
     setSponsorEventIsRange(!!s.eventEndDate);
@@ -666,7 +670,11 @@ export default function ModeratorScreen() {
     setSponsorLinks((prev) => prev.map((l, i) => (i === index ? { ...l, [field]: value } : l)));
   };
 
-  const addSponsorLink = () => setSponsorLinks((prev) => [...prev, { label: '', url: '' }]);
+  const setSponsorLinkType = (index: number, type: 'link' | 'directions') => {
+    setSponsorLinks((prev) => prev.map((l, i) => (i === index ? { ...l, type } : l)));
+  };
+
+  const addSponsorLink = () => setSponsorLinks((prev) => [...prev, { label: '', url: '', type: 'link' }]);
 
   const removeSponsorLink = (index: number) => setSponsorLinks((prev) => prev.filter((_, i) => i !== index));
 
@@ -681,7 +689,7 @@ export default function ModeratorScreen() {
     // Shared across both kinds — an event can link out (tickets, RSVP,
     // the sponsor's own page) same as an information sponsor can.
     const validLinks = sponsorLinks
-      .map((l) => ({ label: l.label.trim() || 'Visit', url: l.url.trim() }))
+      .map((l) => ({ label: l.label.trim() || (l.type === 'directions' ? 'Get directions' : 'Visit'), url: l.url.trim(), type: l.type ?? 'link' }))
       .filter((l) => l.url);
     const linksField = validLinks.length > 0 ? { links: validLinks } : editingSponsor ? { links: deleteField() } : {};
 
@@ -740,7 +748,7 @@ export default function ModeratorScreen() {
   const openNewPost = () => {
     setEditingPost(null);
     setTitle(''); setDescription(''); setEventRange({ start: null, end: null, allDay: true });
-    setLocationText(''); setImageUrl(''); setVisibility('everyone'); setImageUploading(false);
+    setLocationText(''); setCheckInCode(''); setImageUrl(''); setVisibility('everyone'); setImageUploading(false);
     setNewPostFormKey((k) => k + 1);
     setShowNewPost(true);
   };
@@ -750,6 +758,7 @@ export default function ModeratorScreen() {
     setTitle(post.title);
     setDescription(post.description);
     setLocationText(post.locationText ?? '');
+    setCheckInCode(post.checkInCode ?? '');
     setImageUrl(post.imageUrl ?? '');
     setImageUploading(false);
     setVisibility(post.visibility);
@@ -781,6 +790,7 @@ export default function ModeratorScreen() {
     // value from this form's local state.
     const dateTimeChanged = !!editingPost && editingPost.dateTime !== dateTimeIso;
     const wasDraft = !editingPost || editingPost.status === 'draft';
+    const trimmedCode = checkInCode.trim();
     const data = {
       type, title, description, locationText, visibility,
       status: publish ? 'published' : 'draft',
@@ -789,6 +799,7 @@ export default function ModeratorScreen() {
       allDay: eventRange.allDay,
       ...(imageUrl ? { imageUrl } : {}),
       ...(dateTimeChanged ? { startNotificationSent: false, reminderSent: false } : {}),
+      ...(trimmedCode ? { checkInCode: trimmedCode } : editingPost ? { checkInCode: deleteField() } : {}),
     };
     if (editingPost) {
       await updateDoc(doc(db, 'posts', editingPost.id), data);
@@ -918,6 +929,14 @@ export default function ModeratorScreen() {
     setClearLogsStep('idle');
   };
 
+  // Soonest-created first isn't meaningful here — most-recently-dated event
+  // first is what a moderator actually wants when reviewing turnout.
+  const checkedInEvents = posts
+    .filter((p) => p.type === 'event' && (p.checkIns?.length ?? 0) > 0)
+    .sort((a, b) => (b.dateTime ?? '').localeCompare(a.dateTime ?? ''));
+  const allCheckIns = checkedInEvents.flatMap((p) => p.checkIns ?? []);
+  const statsEvent = statsEventId ? checkedInEvents.find((p) => p.id === statsEventId) ?? null : null;
+
   const yearMemberCount = members.filter((m) => m.role === 'member' && m.membershipTerm === 'year').length;
   const semesterMemberCount = members.filter((m) => m.role === 'member' && m.membershipTerm === 'semester').length;
   const moderatorCount = members.filter((m) => m.role === 'moderator').length;
@@ -979,6 +998,19 @@ export default function ModeratorScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.memberMgmtText}>Sponsors</Text>
             <Text style={styles.cardSubtitle}>{sponsors.length} sponsor{sponsors.length === 1 ? '' : 's'}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
+
+        <Pressable style={styles.memberMgmtCard} onPress={() => { setStatsEventId(null); setShowStatsPanel(true); }}>
+          <View style={styles.memberMgmtIcon}>
+            <Ionicons name="stats-chart-outline" size={18} color={colors.red} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.memberMgmtText}>Event statistics</Text>
+            <Text style={styles.cardSubtitle}>
+              {checkedInEvents.length} event{checkedInEvents.length === 1 ? '' : 's'} with check-ins
+            </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
@@ -1212,6 +1244,18 @@ export default function ModeratorScreen() {
                 initial={editingPost ? eventRange : undefined}
               />
               <TextInput style={styles.input} placeholder="Location (optional)" placeholderTextColor={colors.textMuted} value={locationText} onChangeText={setLocationText} />
+              <TextInput
+                style={[styles.input, { marginTop: spacing.sm }]}
+                placeholder="Check-in code (optional)"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="characters"
+                value={checkInCode}
+                onChangeText={setCheckInCode}
+              />
+              <Text style={styles.hint}>
+                Announce this at the event — attendees type it in to check in from the post. Leave blank to
+                skip check-in tracking for this event.
+              </Text>
               <ImagePickerField folder="posts" value={imageUrl} onChange={setImageUrl} onUploadingChange={setImageUploading} />
               <View style={styles.row}>
                 <Text style={styles.rowLabel}>Members only</Text>
@@ -1666,12 +1710,28 @@ export default function ModeratorScreen() {
 
                   <Text style={styles.manageSectionLabel}>Links (optional)</Text>
                   <Text style={styles.hint}>
-                    Button text is up to you (e.g. "Order on the app", "View menu", "Get directions") — the URL
-                    itself already opens their app instead of a browser automatically, if they support that.
+                    "Link" opens any URL — button text is up to you (e.g. "Order on the app", "View menu"), and
+                    the URL itself already opens their app instead of a browser automatically, if they support
+                    that. "Directions" is simpler for a physical address — just type it in and the app builds a
+                    maps link for you.
                   </Text>
                   {sponsorLinks.map((linkItem, index) => (
                     <View key={index} style={styles.sponsorLinkRow}>
                       <View style={{ flex: 1 }}>
+                        <View style={[styles.modeToggle, { marginTop: 0, marginBottom: spacing.xs }]}>
+                          <Pressable
+                            style={[styles.modeBtn, (linkItem.type ?? 'link') === 'link' && styles.modeBtnActive]}
+                            onPress={() => setSponsorLinkType(index, 'link')}
+                          >
+                            <Text style={[styles.modeBtnText, (linkItem.type ?? 'link') === 'link' && styles.modeBtnTextActive]}>Link</Text>
+                          </Pressable>
+                          <Pressable
+                            style={[styles.modeBtn, linkItem.type === 'directions' && styles.modeBtnActive]}
+                            onPress={() => setSponsorLinkType(index, 'directions')}
+                          >
+                            <Text style={[styles.modeBtnText, linkItem.type === 'directions' && styles.modeBtnTextActive]}>Directions</Text>
+                          </Pressable>
+                        </View>
                         <TextInput
                           style={styles.input}
                           placeholder="Button text (e.g. Visit website)"
@@ -1679,14 +1739,24 @@ export default function ModeratorScreen() {
                           value={linkItem.label}
                           onChangeText={(v) => updateSponsorLink(index, 'label', v)}
                         />
-                        <TextInput
-                          style={styles.input}
-                          placeholder="URL"
-                          placeholderTextColor={colors.textMuted}
-                          autoCapitalize="none"
-                          value={linkItem.url}
-                          onChangeText={(v) => updateSponsorLink(index, 'url', v)}
-                        />
+                        {linkItem.type === 'directions' ? (
+                          <TextInput
+                            style={styles.input}
+                            placeholder="Address (e.g. 123 Main St, Atlanta, GA)"
+                            placeholderTextColor={colors.textMuted}
+                            value={linkItem.url}
+                            onChangeText={(v) => updateSponsorLink(index, 'url', v)}
+                          />
+                        ) : (
+                          <TextInput
+                            style={styles.input}
+                            placeholder="URL"
+                            placeholderTextColor={colors.textMuted}
+                            autoCapitalize="none"
+                            value={linkItem.url}
+                            onChangeText={(v) => updateSponsorLink(index, 'url', v)}
+                          />
+                        )}
                       </View>
                       {sponsorLinks.length > 1 && (
                         <Pressable onPress={() => removeSponsorLink(index)} hitSlop={8} style={styles.sponsorLinkRemove}>
@@ -1764,6 +1834,20 @@ export default function ModeratorScreen() {
                   {sponsorLinks.map((linkItem, index) => (
                     <View key={index} style={styles.sponsorLinkRow}>
                       <View style={{ flex: 1 }}>
+                        <View style={[styles.modeToggle, { marginTop: 0, marginBottom: spacing.xs }]}>
+                          <Pressable
+                            style={[styles.modeBtn, (linkItem.type ?? 'link') === 'link' && styles.modeBtnActive]}
+                            onPress={() => setSponsorLinkType(index, 'link')}
+                          >
+                            <Text style={[styles.modeBtnText, (linkItem.type ?? 'link') === 'link' && styles.modeBtnTextActive]}>Link</Text>
+                          </Pressable>
+                          <Pressable
+                            style={[styles.modeBtn, linkItem.type === 'directions' && styles.modeBtnActive]}
+                            onPress={() => setSponsorLinkType(index, 'directions')}
+                          >
+                            <Text style={[styles.modeBtnText, linkItem.type === 'directions' && styles.modeBtnTextActive]}>Directions</Text>
+                          </Pressable>
+                        </View>
                         <TextInput
                           style={styles.input}
                           placeholder="Button text (e.g. Get tickets)"
@@ -1771,14 +1855,24 @@ export default function ModeratorScreen() {
                           value={linkItem.label}
                           onChangeText={(v) => updateSponsorLink(index, 'label', v)}
                         />
-                        <TextInput
-                          style={styles.input}
-                          placeholder="URL"
-                          placeholderTextColor={colors.textMuted}
-                          autoCapitalize="none"
-                          value={linkItem.url}
-                          onChangeText={(v) => updateSponsorLink(index, 'url', v)}
-                        />
+                        {linkItem.type === 'directions' ? (
+                          <TextInput
+                            style={styles.input}
+                            placeholder="Address (e.g. 123 Main St, Atlanta, GA)"
+                            placeholderTextColor={colors.textMuted}
+                            value={linkItem.url}
+                            onChangeText={(v) => updateSponsorLink(index, 'url', v)}
+                          />
+                        ) : (
+                          <TextInput
+                            style={styles.input}
+                            placeholder="URL"
+                            placeholderTextColor={colors.textMuted}
+                            autoCapitalize="none"
+                            value={linkItem.url}
+                            onChangeText={(v) => updateSponsorLink(index, 'url', v)}
+                          />
+                        )}
                       </View>
                       {sponsorLinks.length > 1 && (
                         <Pressable onPress={() => removeSponsorLink(index)} hitSlop={8} style={styles.sponsorLinkRemove}>
@@ -1827,6 +1921,73 @@ export default function ModeratorScreen() {
                   <Ionicons name="add-circle-outline" size={20} color={colors.red} />
                 </Pressable>
               ))}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {showStatsPanel && (
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Pressable style={styles.closeBtn} onPress={() => setShowStatsPanel(false)} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+            <ScrollView>
+              {statsEvent ? (
+                <>
+                  <Pressable style={styles.backRow} onPress={() => setStatsEventId(null)} hitSlop={8}>
+                    <Ionicons name="chevron-back" size={16} color={colors.red} />
+                    <Text style={styles.backRowText}>All events</Text>
+                  </Pressable>
+                  <Text style={styles.header}>{statsEvent.title}</Text>
+                  <Text style={styles.hint}>
+                    {formatEventTimeRange(statsEvent.dateTime, statsEvent.endDateTime, statsEvent.allDay)}
+                  </Text>
+                  <Text style={styles.statsHeadcount}>{statsEvent.checkIns?.length ?? 0} checked in</Text>
+                  {averageYear(statsEvent.checkIns) != null && (
+                    <Text style={styles.hint}>Average year: {averageYear(statsEvent.checkIns)!.toFixed(1)}</Text>
+                  )}
+                  <View style={{ marginTop: spacing.lg }}>
+                    <PieChart data={yearBreakdown(statsEvent.checkIns)} />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.header}>Event statistics</Text>
+                  {checkedInEvents.length === 0 ? (
+                    <Text style={styles.empty}>No check-ins recorded yet — set a check-in code on an event to start tracking.</Text>
+                  ) : (
+                    <>
+                      <View style={styles.statsOverallCard}>
+                        <Text style={styles.manageSectionLabel}>Overall</Text>
+                        <Text style={styles.statsHeadcount}>
+                          {allCheckIns.length} total check-in{allCheckIns.length === 1 ? '' : 's'} across{' '}
+                          {checkedInEvents.length} event{checkedInEvents.length === 1 ? '' : 's'}
+                        </Text>
+                        {averageYear(allCheckIns) != null && (
+                          <Text style={styles.hint}>Average year across all events: {averageYear(allCheckIns)!.toFixed(1)}</Text>
+                        )}
+                        <View style={{ marginTop: spacing.md }}>
+                          <PieChart data={yearBreakdown(allCheckIns)} />
+                        </View>
+                      </View>
+
+                      <Text style={[styles.manageSectionLabel, { marginTop: spacing.lg }]}>By event</Text>
+                      {checkedInEvents.map((p) => (
+                        <Pressable key={p.id} style={styles.eventPickRow} onPress={() => setStatsEventId(p.id)}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.eventPickTitle} numberOfLines={1}>{p.title}</Text>
+                            <Text style={styles.cardSubtitle}>
+                              {formatEventTimeRange(p.dateTime, p.endDateTime, p.allDay)} · {p.checkIns?.length ?? 0} checked in
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                        </Pressable>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -2316,6 +2477,15 @@ const styles = StyleSheet.create({
   statNumber: { fontSize: 18, fontWeight: '800', color: colors.redSoftText },
   statLabel: { fontSize: 10, fontWeight: '700', color: colors.redSoftText, textTransform: 'uppercase', marginTop: 2 },
   manageSectionLabel: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: spacing.sm },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: spacing.md },
+  backRowText: { color: colors.red, fontWeight: '600', fontSize: 13 },
+  statsHeadcount: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginTop: spacing.xs },
+  statsOverallCard: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
   dangerBtn: { flex: 1, backgroundColor: colors.red, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },
   dangerBtnText: { color: colors.onAccent, fontWeight: '700', fontSize: 13 },
   cancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center' },

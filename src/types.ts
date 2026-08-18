@@ -2,6 +2,10 @@ export type UserRole = 'user' | 'member' | 'moderator' | 'admin';
 
 export type MembershipTerm = 'year' | 'semester';
 
+// '4+' covers 5th-years, grad students, anyone past standard undergrad
+// year 4 — kept as one bucket rather than trying to enumerate every case.
+export type StudentYear = '1' | '2' | '3' | '4' | '4+';
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -12,6 +16,10 @@ export interface UserProfile {
   // requester) — dues are paid per semester or per year, so this is what
   // lets a semester-only reset skip full-year members.
   membershipTerm?: MembershipTerm;
+  // Asked as a mandatory step right after signup (see profile.tsx) — only
+  // ever missing on accounts created before this existed, in which case
+  // event check-in asks for it there instead as a fallback.
+  year?: StudentYear;
   requestedAt?: any;
   createdAt: any;
   // Expo push token for this device, saved on sign-in — moderators' clients
@@ -61,6 +69,21 @@ export interface Post {
   locationText?: string;
   visibility: Visibility;
   imageUrl?: string;
+  // Set by a moderator in the New/Edit Post form (type === 'event' only) —
+  // attendees type this in to check in from PostDetailModal. Optional: a
+  // moderator can skip setting one if this particular event doesn't need
+  // check-in tracking.
+  checkInCode?: string;
+  // One entry per checked-in attendee, appended via arrayUnion — embedded
+  // directly on the post rather than a separate collection/subcollection,
+  // since club-scale attendance numbers are small and this keeps per-event
+  // stats (headcount + year breakdown) a single-document read. year is
+  // snapshotted at check-in time (not a live reference) so a stats page
+  // doesn't shift retroactively if someone updates their year later.
+  // checkedInAt is a client-generated ISO string, not serverTimestamp() —
+  // Firestore doesn't support server timestamp sentinels inside objects
+  // added via arrayUnion.
+  checkIns?: { uid: string; name: string; year?: StudentYear; checkedInAt: string }[];
   // Every non-all-day event automatically gets a "starting now" push when
   // its start time arrives — always on, not configurable. Off by default
   // is the *additional* early reminder ("starting in N mins"), which a
@@ -148,9 +171,17 @@ export type SponsorCategory = 'food' | 'services' | 'other';
 // (iOS/Android universal links handle that transparently). A sponsor can
 // have any number of these — a boba shop might link both their ordering
 // app and their Instagram, for instance.
+//
+// 'link' (default, and the only kind before this existed) opens `url`
+// as-is. 'directions' is a guided alternative for the common "send them to
+// this address" case — the moderator just types a plain address into
+// `url` instead of hand-building a maps deep link, and the app resolves it
+// to Apple Maps (iOS) or Google Maps (Android/web) at open time. See
+// resolveLinkUrl in src/utils.ts.
 export interface SponsorLink {
   label: string;
   url: string;
+  type?: 'link' | 'directions';
 }
 
 // 'information' is the evergreen brand profile (category, links, optional

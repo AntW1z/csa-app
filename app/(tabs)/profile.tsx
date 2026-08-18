@@ -11,10 +11,10 @@ import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp } from '
 import { auth, db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
 import { registerForPushNotificationsAsync } from '../../src/notifications';
-import { MembershipTerm } from '../../src/types';
+import { MembershipTerm, StudentYear } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 import { getAuthErrorMessage } from '../../src/utils';
-import { WHAT_IS_CSA } from '../../src/constants';
+import { WHAT_IS_CSA, YEAR_OPTIONS } from '../../src/constants';
 
 const PRIVACY_POLICY_URL = 'https://antw1z.github.io/csa-app/privacy-policy.html';
 
@@ -46,6 +46,13 @@ export default function ProfileScreen() {
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
+  // Set only on a successful *signup* (not sign-in) — that's what makes the
+  // year gate below fire right after creating a new account without also
+  // trapping every legacy account that happens to be missing `year` behind
+  // it forever. Those legacy accounts get asked instead at check-in time
+  // (see PostDetailModal), matching what was actually agreed with Sophie.
+  const [justSignedUp, setJustSignedUp] = useState(false);
+  const [savingYear, setSavingYear] = useState(false);
 
   useEffect(() => {
     if (!firebaseUser) return;
@@ -54,6 +61,45 @@ export default function ProfileScreen() {
 
   if (loading) return null;
 
+  // Mandatory, unskippable — the one thing a brand new account must do
+  // before anything else. Only ever fires right after this session's own
+  // signup (see justSignedUp above), not for every existing account that
+  // happens to lack `year`.
+  if (firebaseUser && profile && justSignedUp && !profile.year) {
+    const chooseYear = async (year: StudentYear) => {
+      setSavingYear(true);
+      try {
+        await updateDoc(doc(db, 'users', profile.uid), { year });
+        setJustSignedUp(false);
+      } finally {
+        setSavingYear(false);
+      }
+    };
+
+    return (
+      <View style={styles.container}>
+        <View style={styles.form}>
+          <Text style={styles.header}>What year are you?</Text>
+          <Text style={styles.notifHint}>
+            One last thing — this helps CSA officers plan events and is used when you check in at events.
+          </Text>
+          <View style={styles.yearOptionRow}>
+            {YEAR_OPTIONS.map((y) => (
+              <Pressable
+                key={y}
+                style={[styles.yearOption, savingYear && styles.buttonDisabled]}
+                onPress={() => chooseYear(y)}
+                disabled={savingYear}
+              >
+                <Text style={styles.yearOptionText}>{y}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   // Not signed in: this is the ONLY place the app ever asks for an account.
   if (!firebaseUser) {
     const submit = async () => {
@@ -61,6 +107,7 @@ export default function ProfileScreen() {
       try {
         if (mode === 'signup') {
           await createUserWithEmailAndPassword(auth, email, password);
+          setJustSignedUp(true);
         } else {
           await signInWithEmailAndPassword(auth, email, password);
         }
@@ -636,6 +683,17 @@ const styles = StyleSheet.create({
   buttonText: { color: colors.onAccent, fontWeight: '700' },
   switchText: { color: colors.red, textAlign: 'center', marginTop: spacing.sm },
   notifHint: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: spacing.lg, lineHeight: 17 },
+  yearOptionRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg },
+  yearOption: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.pill,
+    backgroundColor: colors.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.card,
+  },
+  yearOptionText: { color: colors.onAccent, fontSize: 20, fontWeight: '800' },
   error: { color: colors.red, fontSize: 13 },
   pending: { color: colors.amberSoftText, fontSize: 13, textAlign: 'center', marginTop: spacing.md },
   signOutWrap: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg },

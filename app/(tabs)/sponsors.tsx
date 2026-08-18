@@ -3,9 +3,9 @@ import { View, Text, Image, Pressable, ScrollView, Linking, StyleSheet } from 'r
 import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
-import { Sponsor, SponsorCategory, SponsorKind } from '../../src/types';
+import { Sponsor, SponsorCategory, SponsorKind, SponsorLink } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
-import { sortByOrder, toDateString } from '../../src/utils';
+import { sortByOrder, toDateString, resolveLinkUrl } from '../../src/utils';
 
 const ROW_CARD_WIDTH = 150;
 
@@ -72,7 +72,7 @@ export default function SponsorsScreen() {
     items: informationSponsors.filter((s) => resolveCategory(s) === cat),
   })).filter((r) => r.items.length > 0);
 
-  const openLink = (url: string) => Linking.openURL(url);
+  const openLink = (link: SponsorLink) => Linking.openURL(resolveLinkUrl(link));
 
   const linkedSponsor = selected?.linkedSponsorId
     ? sponsors.find((s) => s.id === selected.linkedSponsorId) ?? null
@@ -154,8 +154,13 @@ export default function SponsorsScreen() {
                 {selected.description ? <Text style={styles.detailDescription}>{selected.description}</Text> : null}
 
                 {selected.links?.map((link, i) => (
-                  <Pressable key={i} style={styles.ctaBtn} onPress={() => openLink(link.url)}>
-                    <Ionicons name="open-outline" size={16} color={colors.onAccent} style={styles.ctaBtnIcon} />
+                  <Pressable key={i} style={styles.ctaBtn} onPress={() => openLink(link)}>
+                    <Ionicons
+                      name={link.type === 'directions' ? 'navigate-outline' : 'open-outline'}
+                      size={16}
+                      color={colors.onAccent}
+                      style={styles.ctaBtnIcon}
+                    />
                     <Text style={styles.ctaBtnText}>{link.label}</Text>
                   </Pressable>
                 ))}
