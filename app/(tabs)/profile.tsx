@@ -58,6 +58,35 @@ export default function ProfileScreen() {
     Notifications.getPermissionsAsync().then(({ status }) => setNotifStatus(status));
   }, [firebaseUser]);
 
+  // This screen never unmounts across sign-out, account deletion, or
+  // signing into a different account — it's the same persistent tab
+  // instance the whole time. Without this, leftover UI state from a
+  // previous session (e.g. the delete-account flow sitting on "confirm
+  // your password" after a successful reauth-and-delete) stays put and
+  // reappears the next time someone's signed in, even on a brand new
+  // account that never touched any of it.
+  useEffect(() => {
+    if (firebaseUser) return;
+    setEditingName(false);
+    setNameDraft('');
+    setShowMemberInfo(false);
+    setDeleteStep('idle');
+    setDeletePassword('');
+    setDeleteError('');
+    setDeleting(false);
+    setShowChangePassword(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setChangePasswordError('');
+    setPasswordChanged(false);
+    setShowCsaInfo(false);
+    setShowFeedback(false);
+    setFeedbackMessage('');
+    setFeedbackSubmitting(false);
+    setFeedbackSubmitted(false);
+    setFeedbackError('');
+  }, [firebaseUser]);
+
   // Once the OS permission is actually granted, the switch controls a
   // pure in-app preference (notificationsEnabled) — there's no API to
   // revoke OS notification permission from inside an app, so this field is
