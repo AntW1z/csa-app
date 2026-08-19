@@ -46,6 +46,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!user) {
         setProfile(null);
         setLoading(false);
+        // Reset here rather than only on delete-flow Cancel/error — this
+        // is set to true right before any delete attempt (to stop the
+        // profile listener from racing in and recreating a blank doc
+        // between the Firestore doc disappearing and the auth account
+        // actually being gone), but a *successful* deletion never touched
+        // it before. That left it stuck true forever after any successful
+        // delete, silently skipping profile auto-creation for whichever
+        // account signed in next — profile stayed null, and anything that
+        // required it (like the delete button itself) just silently
+        // no-op'd. firebaseUser going null is the one moment guaranteed to
+        // fire after every path (sign-out, immediate delete, or
+        // reauth-then-delete), so it's the right place to always clear it.
+        skipAutoCreateProfile.current = false;
       }
     });
     return unsubAuth;
