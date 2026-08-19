@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { collection, onSnapshot, orderBy, query, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import PromoCarousel from '../../src/components/PromoCarousel';
 import PostDetailModal from '../../src/components/PostDetailModal';
@@ -44,16 +44,16 @@ export default function Home() {
     });
   }, []);
 
-  // A carousel item linked to a post fetches it on demand (they're rarely
-  // tapped, so no need for a standing listener) and opens its detail; a
-  // plain manually-added image has no tap behavior at all.
-  const handleCarouselPress = async (item: CarouselItem) => {
-    if (!item.postId) return;
-    const snap = await getDoc(doc(db, 'posts', item.postId));
-    if (snap.exists()) {
-      setDetailPostId(item.postId);
-      setShowDetail(true);
-    }
+  // A carousel item linked to a post opens its detail using data already
+  // sitting in postsById (the listener above is already running for
+  // resolvedCarousel's own use, right below) — no need for a one-off
+  // network fetch here, which used to make the tap wait on a full
+  // round-trip before the modal would even open. A plain manually-added
+  // image has no tap behavior at all.
+  const handleCarouselPress = (item: CarouselItem) => {
+    if (!item.postId || !postsById[item.postId]) return;
+    setDetailPostId(item.postId);
+    setShowDetail(true);
   };
   const detailPost = detailPostId ? postsById[detailPostId] ?? null : null;
 
