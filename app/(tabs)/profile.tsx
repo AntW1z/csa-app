@@ -17,6 +17,7 @@ import { getAuthErrorMessage } from '../../src/utils';
 import { WHAT_IS_CSA, YEAR_OPTIONS } from '../../src/constants';
 
 const PRIVACY_POLICY_URL = 'https://antw1z.github.io/csa-app/privacy-policy.html';
+const TERMS_OF_SERVICE_URL = 'https://antw1z.github.io/csa-app/terms-of-service.html';
 
 const termLabel = (term?: MembershipTerm) => (term === 'year' ? 'Full Year' : term === 'semester' ? 'Semester' : null);
 
@@ -25,6 +26,10 @@ export default function ProfileScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  // Only gates account *creation* — signing into an existing account
+  // doesn't re-collect anything new, so there's nothing fresh to consent
+  // to there. Required (not just shown) before Create account will submit.
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -102,7 +107,10 @@ export default function ProfileScreen() {
 
   // Not signed in: this is the ONLY place the app ever asks for an account.
   if (!firebaseUser) {
+    const canSubmit = mode === 'signin' || agreedToTerms;
+
     const submit = async () => {
+      if (!canSubmit) return;
       setError('');
       try {
         if (mode === 'signup') {
@@ -122,11 +130,30 @@ export default function ProfileScreen() {
           <Text style={styles.header}>{mode === 'signup' ? 'Create account' : 'Sign in'}</Text>
           <TextInput style={styles.input} placeholder="Email" placeholderTextColor={colors.textMuted} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
           <TextInput style={styles.input} placeholder="Password" placeholderTextColor={colors.textMuted} secureTextEntry value={password} onChangeText={setPassword} />
+          {mode === 'signup' && (
+            <Pressable style={styles.agreeRow} onPress={() => setAgreedToTerms((v) => !v)} hitSlop={4}>
+              <Ionicons
+                name={agreedToTerms ? 'checkbox' : 'square-outline'}
+                size={20}
+                color={agreedToTerms ? colors.red : colors.textMuted}
+              />
+              <Text style={styles.agreeText}>
+                I agree to the{' '}
+                <Text style={styles.agreeLink} onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}>
+                  Terms of Service
+                </Text>{' '}
+                and{' '}
+                <Text style={styles.agreeLink} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+                  Privacy Policy
+                </Text>
+              </Text>
+            </Pressable>
+          )}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable style={styles.button} onPress={submit}>
+          <Pressable style={[styles.button, !canSubmit && styles.buttonDisabled]} onPress={submit} disabled={!canSubmit}>
             <Text style={styles.buttonText}>{mode === 'signup' ? 'Create account' : 'Sign in'}</Text>
           </Pressable>
-          <Pressable onPress={() => setMode(mode === 'signup' ? 'signin' : 'signup')}>
+          <Pressable onPress={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setAgreedToTerms(false); }}>
             <Text style={styles.switchText}>
               {mode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account'}
             </Text>
@@ -682,6 +709,9 @@ const styles = StyleSheet.create({
   button: { backgroundColor: colors.red, borderRadius: radius.md, padding: 14, alignItems: 'center' },
   buttonText: { color: colors.onAccent, fontWeight: '700' },
   switchText: { color: colors.red, textAlign: 'center', marginTop: spacing.sm },
+  agreeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginTop: spacing.xs },
+  agreeText: { flex: 1, fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
+  agreeLink: { color: colors.red, fontWeight: '600' },
   notifHint: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: spacing.lg, lineHeight: 17 },
   yearOptionRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg },
   yearOption: {
