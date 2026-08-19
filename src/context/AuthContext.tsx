@@ -84,11 +84,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [firebaseUser]);
 
   // Registers this device's Expo push token once someone's signed in — web
-  // has no meaningful equivalent here, so it's skipped there.
+  // has no meaningful equivalent here, so it's skipped there. Waits on
+  // `profile` (not just firebaseUser) so this can't race ahead of the
+  // profile-doc-creation effect above: on a brand-new signup, if
+  // notification permission happens to already be granted (e.g. from
+  // earlier testing on the same device), registerForPushNotificationsAsync
+  // can resolve fast enough to try updating a doc that doesn't exist yet,
+  // which Firestore's rules report as permission-denied rather than
+  // not-found — profile is only ever set once that doc is confirmed to
+  // exist, so this can't fire before then.
   useEffect(() => {
-    if (!firebaseUser || Platform.OS === 'web') return;
+    if (!firebaseUser || !profile || Platform.OS === 'web') return;
     registerForPushNotificationsAsync(firebaseUser.uid);
-  }, [firebaseUser]);
+  }, [firebaseUser, profile?.uid]);
 
   // The in-app inbox — only meaningful once signed in, since read state
   // lives on the user's own profile doc.
