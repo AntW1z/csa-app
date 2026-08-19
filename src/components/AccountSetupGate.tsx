@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Linking, Platform, Switch, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -84,7 +85,7 @@ export default function AccountSetupGate() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
         <Text style={styles.header}>Finish setting up your account</Text>
 
@@ -128,7 +129,7 @@ export default function AccountSetupGate() {
           <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Finish setup'}</Text>
         </Pressable>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
