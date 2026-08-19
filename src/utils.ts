@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
 import { Post, SponsorLink, StudentYear } from './types';
 import { YEAR_OPTIONS } from './constants';
 import { PieSlice } from './components/PieChart';
@@ -116,6 +116,18 @@ export function resolveLinkUrl(link: SponsorLink): string {
   // more consistently supported (the iOS Simulator's Maps app in
   // particular can fail to open an `address=` link outright).
   return Platform.OS === 'ios' ? `https://maps.apple.com/?q=${query}` : `https://www.google.com/maps/search/?api=1&query=${query}`;
+}
+
+// Linking.openURL() rejects (rather than resolving false) when nothing on
+// the device can handle a URL, or when there's a transient issue (e.g. a
+// GitHub Pages link that hasn't finished deploying yet) — an uncaught
+// rejection from that surfaces as a raw red-screen error instead of
+// anything a member would understand, so every external link in the app
+// should go through this rather than calling Linking.openURL directly.
+export function openExternalLink(url: string) {
+  Linking.openURL(url).catch(() => {
+    Alert.alert("Couldn't open link", "This may be temporary — try again in a moment.");
+  });
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');

@@ -1,6 +1,7 @@
-import { View, Text, Pressable, Linking, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, shadow } from '../../src/theme';
+import { openExternalLink } from '../../src/utils';
 
 const LINKS: { label: string; url: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'Instagram', url: 'https://www.instagram.com/gt_csa/', icon: 'logo-instagram' },
@@ -13,7 +14,7 @@ export default function LinksScreen() {
     <View style={styles.container}>
       <Text style={styles.header}>Find us</Text>
       {LINKS.map((link) => (
-        <Pressable key={link.label} style={styles.row} onPress={() => Linking.openURL(link.url)}>
+        <Pressable key={link.label} style={styles.row} onPress={() => openExternalLink(link.url)}>
           <View style={styles.iconWrap}>
             <Ionicons name={link.icon} size={18} color={colors.red} />
           </View>

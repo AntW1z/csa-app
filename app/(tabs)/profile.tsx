@@ -13,7 +13,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { registerForPushNotificationsAsync } from '../../src/notifications';
 import { MembershipTerm, StudentYear } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
-import { getAuthErrorMessage } from '../../src/utils';
+import { getAuthErrorMessage, openExternalLink } from '../../src/utils';
 import { WHAT_IS_CSA, YEAR_OPTIONS } from '../../src/constants';
 
 const PRIVACY_POLICY_URL = 'https://antw1z.github.io/csa-app/privacy-policy.html';
@@ -223,11 +223,11 @@ export default function ProfileScreen() {
               />
               <Text style={styles.agreeText}>
                 I agree to the{' '}
-                <Text style={styles.agreeLink} onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}>
+                <Text style={styles.agreeLink} onPress={() => openExternalLink(TERMS_OF_SERVICE_URL)}>
                   Terms of Service
                 </Text>{' '}
                 and{' '}
-                <Text style={styles.agreeLink} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+                <Text style={styles.agreeLink} onPress={() => openExternalLink(PRIVACY_POLICY_URL)}>
                   Privacy Policy
                 </Text>
               </Text>
@@ -475,7 +475,7 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
 
-          <Pressable style={[styles.settingsRow, styles.settingsRowLast]} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+          <Pressable style={[styles.settingsRow, styles.settingsRowLast]} onPress={() => openExternalLink(PRIVACY_POLICY_URL)}>
             <View style={styles.settingsIcon}>
               <Ionicons name="document-text-outline" size={16} color={colors.red} />
             </View>
