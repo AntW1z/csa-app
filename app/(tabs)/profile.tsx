@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, Pressable, Modal, ScrollView, Linking, Platform, Switch, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
@@ -58,23 +58,75 @@ export default function ProfileScreen() {
   // (see PostDetailModal), matching what was actually agreed with Sophie.
   const [justSignedUp, setJustSignedUp] = useState(false);
   const [savingYear, setSavingYear] = useState(false);
+  const [setupNameDraft, setSetupNameDraft] = useState('');
+  const [setupYear, setSetupYear] = useState<StudentYear | null>(null);
+  const setupNameInitialized = useRef(false);
 
   useEffect(() => {
     if (!firebaseUser) return;
     Notifications.getPermissionsAsync().then(({ status }) => setNotifStatus(status));
   }, [firebaseUser]);
 
+  // Seeds the setup screen's name field from the auto-generated default
+  // (email.split('@')[0], set by AuthContext on first sign-in) exactly
+  // once — a plain useState initializer can't do this since profile is
+  // still null on the very first render, before it's fetched.
+  useEffect(() => {
+    if (profile && !setupNameInitialized.current) {
+      setSetupNameDraft(profile.displayName);
+      setupNameInitialized.current = true;
+    }
+  }, [profile]);
+
+  // Once the OS permission is actually granted, the switch controls a
+  // pure in-app preference (notificationsEnabled) — there's no API to
+  // revoke OS notification permission from inside an app, so this field is
+  // what actually determines whether Manage's sends include this device
+  // (see the recipient filters in moderator.tsx and functions/src). Before
+  // permission is granted, there's nothing to toggle off yet, so it falls
+  // through to requesting it instead. Shared by both the post-signup setup
+  // screen below and the main Notifications row further down.
+  const handleNotifToggle = async (nextValue: boolean) => {
+    if (notifStatus === 'checking') return;
+    if (notifStatus === 'granted') {
+      if (!profile) return;
+      await updateDoc(doc(db, 'users', profile.uid), { notificationsEnabled: nextValue });
+      return;
+    }
+    if (!nextValue) return;
+    if (notifStatus === 'denied') {
+      // openSettings() opens the OS Settings app — there's no equivalent
+      // on web, where notification permission lives in the browser's own
+      // site-settings UI instead, so there's nothing useful to jump to.
+      if (Platform.OS !== 'web') Linking.openSettings();
+      return;
+    }
+    if (!profile) return;
+    await registerForPushNotificationsAsync(profile.uid);
+    const { status } = await Notifications.getPermissionsAsync();
+    setNotifStatus(status);
+  };
+
   if (loading) return null;
 
   // Mandatory, unskippable — the one thing a brand new account must do
   // before anything else. Only ever fires right after this session's own
   // signup (see justSignedUp above), not for every existing account that
-  // happens to lack `year`.
+  // happens to lack `year`. Name and notifications are offered here too
+  // since it's already the one guaranteed moment every new member sees —
+  // year is the only field that's actually required to continue.
   if (firebaseUser && profile && justSignedUp && !profile.year) {
-    const chooseYear = async (year: StudentYear) => {
+    const canFinishSetup = !!setupYear;
+
+    const finishSetup = async () => {
+      if (!canFinishSetup || !setupYear) return;
       setSavingYear(true);
       try {
-        await updateDoc(doc(db, 'users', profile.uid), { year });
+        const trimmedName = setupNameDraft.trim();
+        await updateDoc(doc(db, 'users', profile.uid), {
+          year: setupYear,
+          ...(trimmedName && trimmedName !== profile.displayName ? { displayName: trimmedName } : {}),
+        });
         setJustSignedUp(false);
       } finally {
         setSavingYear(false);
@@ -83,24 +135,56 @@ export default function ProfileScreen() {
 
     return (
       <View style={styles.container}>
-        <View style={styles.form}>
-          <Text style={styles.header}>What year are you?</Text>
-          <Text style={styles.notifHint}>
-            One last thing — this helps CSA officers plan events and is used when you check in at events.
-          </Text>
+        {/* container centers short content (the sign-in form) vertically,
+            but this form can be taller than the screen — flex:1 here lets
+            it fill and scroll instead of trying to shrink-center. */}
+        <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+          <Text style={styles.header}>Finish setting up your account</Text>
+
+          <Text style={styles.setupLabel}>Display name</Text>
+          <TextInput
+            style={styles.input}
+            value={setupNameDraft}
+            onChangeText={setSetupNameDraft}
+            placeholder="Display name"
+            placeholderTextColor={colors.textMuted}
+          />
+
+          <Text style={styles.setupLabel}>What year are you? (required)</Text>
+          <Text style={styles.setupHint}>Helps CSA officers plan events and is used when you check in at events.</Text>
           <View style={styles.yearOptionRow}>
             {YEAR_OPTIONS.map((y) => (
               <Pressable
                 key={y}
-                style={[styles.yearOption, savingYear && styles.buttonDisabled]}
-                onPress={() => chooseYear(y)}
-                disabled={savingYear}
+                style={[styles.yearOption, setupYear === y && styles.yearOptionActive]}
+                onPress={() => setSetupYear(y)}
               >
-                <Text style={styles.yearOptionText}>{y}</Text>
+                <Text style={[styles.yearOptionText, setupYear === y && styles.yearOptionTextActive]}>{y}</Text>
               </Pressable>
             ))}
           </View>
-        </View>
+
+          <View style={styles.setupNotifRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.setupLabel}>Notifications</Text>
+              <Text style={styles.setupHint}>Get notified the moment events and announcements are posted.</Text>
+            </View>
+            <Switch
+              value={notifStatus === 'granted' && profile.notificationsEnabled !== false}
+              onValueChange={handleNotifToggle}
+              disabled={notifStatus === 'checking'}
+              trackColor={{ true: '#34C759', false: colors.borderStrong }}
+            />
+          </View>
+
+          <Pressable
+            style={[styles.button, { marginTop: spacing.lg }, (!canFinishSetup || savingYear) && styles.buttonDisabled]}
+            onPress={finishSetup}
+            disabled={!canFinishSetup || savingYear}
+          >
+            <Text style={styles.buttonText}>{savingYear ? 'Saving…' : 'Finish setup'}</Text>
+          </Pressable>
+        </ScrollView>
       </View>
     );
   }
@@ -187,34 +271,6 @@ export default function ProfileScreen() {
     if (!profile || !nameDraft.trim()) return;
     await updateDoc(doc(db, 'users', profile.uid), { displayName: nameDraft.trim() });
     setEditingName(false);
-  };
-
-  // Once the OS permission is actually granted, the switch controls a
-  // pure in-app preference (notificationsEnabled) — there's no API to
-  // revoke OS notification permission from inside an app, so this field is
-  // what actually determines whether Manage's sends include this device
-  // (see the recipient filters in moderator.tsx and functions/src). Before
-  // permission is granted, there's nothing to toggle off yet, so it falls
-  // through to requesting it instead.
-  const handleNotifToggle = async (nextValue: boolean) => {
-    if (notifStatus === 'checking') return;
-    if (notifStatus === 'granted') {
-      if (!profile) return;
-      await updateDoc(doc(db, 'users', profile.uid), { notificationsEnabled: nextValue });
-      return;
-    }
-    if (!nextValue) return;
-    if (notifStatus === 'denied') {
-      // openSettings() opens the OS Settings app — there's no equivalent
-      // on web, where notification permission lives in the browser's own
-      // site-settings UI instead, so there's nothing useful to jump to.
-      if (Platform.OS !== 'web') Linking.openSettings();
-      return;
-    }
-    if (!profile) return;
-    await registerForPushNotificationsAsync(profile.uid);
-    const { status } = await Notifications.getPermissionsAsync();
-    setNotifStatus(status);
   };
 
   const closeChangePassword = () => {
@@ -713,17 +769,31 @@ const styles = StyleSheet.create({
   agreeText: { flex: 1, fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
   agreeLink: { color: colors.red, fontWeight: '600' },
   notifHint: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: spacing.lg, lineHeight: 17 },
-  yearOptionRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg },
+  setupLabel: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, marginTop: spacing.md },
+  setupHint: { color: colors.textMuted, fontSize: 12, lineHeight: 16, marginTop: 2 },
+  setupNotifRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  yearOptionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   yearOption: {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
     borderRadius: radius.pill,
-    backgroundColor: colors.red,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadow.card,
   },
-  yearOptionText: { color: colors.onAccent, fontSize: 20, fontWeight: '800' },
+  yearOptionActive: { backgroundColor: colors.red, borderColor: colors.red, ...shadow.card },
+  yearOptionText: { color: colors.textSecondary, fontSize: 18, fontWeight: '800' },
+  yearOptionTextActive: { color: colors.onAccent },
   error: { color: colors.red, fontSize: 13 },
   pending: { color: colors.amberSoftText, fontSize: 13, textAlign: 'center', marginTop: spacing.md },
   signOutWrap: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg },
