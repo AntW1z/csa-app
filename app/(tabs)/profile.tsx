@@ -47,6 +47,7 @@ export default function ProfileScreen() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordChanged, setPasswordChanged] = useState(false);
   const [showCsaInfo, setShowCsaInfo] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
@@ -299,8 +300,10 @@ export default function ProfileScreen() {
     }
   };
 
-  const closeCsaInfo = () => {
-    setShowCsaInfo(false);
+  const closeCsaInfo = () => setShowCsaInfo(false);
+
+  const closeFeedback = () => {
+    setShowFeedback(false);
     setFeedbackMessage('');
     setFeedbackSubmitted(false);
     setFeedbackError('');
@@ -475,6 +478,14 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
 
+          <Pressable style={styles.settingsRow} onPress={() => setShowFeedback(true)}>
+            <View style={styles.settingsIcon}>
+              <Ionicons name="chatbox-ellipses-outline" size={16} color={colors.red} />
+            </View>
+            <Text style={styles.settingsLabel}>Feedback</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </Pressable>
+
           <Pressable style={[styles.settingsRow, styles.settingsRowLast]} onPress={() => openExternalLink(PRIVACY_POLICY_URL)}>
             <View style={styles.settingsIcon}>
               <Ionicons name="document-text-outline" size={16} color={colors.red} />
@@ -580,33 +591,41 @@ export default function ProfileScreen() {
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.infoTitle}>What is CSA?</Text>
               <Text style={styles.infoBody}>{WHAT_IS_CSA}</Text>
-
-              <View style={styles.feedbackSection}>
-                <Text style={styles.feedbackLabel}>Have a suggestion or found a bug?</Text>
-                {feedbackSubmitted ? (
-                  <Text style={styles.pending}>Thanks — an officer will take a look.</Text>
-                ) : (
-                  <>
-                    <TextInput
-                      style={[styles.input, styles.feedbackInput]}
-                      placeholder="Tell us what's up..."
-                      placeholderTextColor={colors.textMuted}
-                      value={feedbackMessage}
-                      onChangeText={setFeedbackMessage}
-                      multiline
-                    />
-                    {feedbackError ? <Text style={styles.error}>{feedbackError}</Text> : null}
-                    <Pressable
-                      style={[styles.button, { marginTop: spacing.sm }, (feedbackSubmitting || !feedbackMessage.trim()) && styles.buttonDisabled]}
-                      onPress={submitFeedback}
-                      disabled={feedbackSubmitting || !feedbackMessage.trim()}
-                    >
-                      <Text style={styles.buttonText}>{feedbackSubmitting ? 'Sending…' : 'Send'}</Text>
-                    </Pressable>
-                  </>
-                )}
-              </View>
             </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showFeedback} transparent animationType="fade" onRequestClose={closeFeedback}>
+        <Pressable style={styles.overlay} onPress={closeFeedback}>
+          <Pressable style={styles.infoCard} onPress={(e) => e.stopPropagation()}>
+            <Pressable style={styles.closeBtn} onPress={closeFeedback} hitSlop={8}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </Pressable>
+            <Text style={styles.infoTitle}>Feedback</Text>
+            {feedbackSubmitted ? (
+              <Text style={styles.pending}>Thanks — an officer will take a look.</Text>
+            ) : (
+              <>
+                <Text style={styles.infoBody}>Have a suggestion or found a bug? Let us know.</Text>
+                <TextInput
+                  style={[styles.input, styles.feedbackInput, { marginTop: spacing.md }]}
+                  placeholder="Tell us what's up..."
+                  placeholderTextColor={colors.textMuted}
+                  value={feedbackMessage}
+                  onChangeText={setFeedbackMessage}
+                  multiline
+                />
+                {feedbackError ? <Text style={styles.error}>{feedbackError}</Text> : null}
+                <Pressable
+                  style={[styles.button, { marginTop: spacing.sm }, (feedbackSubmitting || !feedbackMessage.trim()) && styles.buttonDisabled]}
+                  onPress={submitFeedback}
+                  disabled={feedbackSubmitting || !feedbackMessage.trim()}
+                >
+                  <Text style={styles.buttonText}>{feedbackSubmitting ? 'Sending…' : 'Send'}</Text>
+                </Pressable>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -758,8 +777,6 @@ const styles = StyleSheet.create({
   },
   settingsLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary },
   versionText: { textAlign: 'center', fontSize: 12, color: colors.textMuted },
-  feedbackSection: { marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border },
-  feedbackLabel: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
   feedbackInput: { minHeight: 80, textAlignVertical: 'top' },
   input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, padding: spacing.md, fontSize: 15, color: colors.textPrimary },
   button: { backgroundColor: colors.red, borderRadius: radius.md, padding: 14, alignItems: 'center' },
