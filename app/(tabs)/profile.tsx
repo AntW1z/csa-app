@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, Modal, ScrollView, Linking, Platform, Switch, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, ScrollView, Linking, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser, updatePassword,
@@ -10,7 +9,6 @@ import {
 import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
-import { registerForPushNotificationsAsync } from '../../src/notifications';
 import { MembershipTerm } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 import { getAuthErrorMessage, openExternalLink } from '../../src/utils';
@@ -39,9 +37,6 @@ export default function ProfileScreen() {
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  const [notifStatus, setNotifStatus] = useState<Notifications.PermissionStatus | 'checking'>('checking');
-  const [notifToggleError, setNotifToggleError] = useState('');
-  const [savingNotifToggle, setSavingNotifToggle] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -54,11 +49,6 @@ export default function ProfileScreen() {
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
-
-  useEffect(() => {
-    if (!firebaseUser) return;
-    Notifications.getPermissionsAsync().then(({ status }) => setNotifStatus(status));
-  }, [firebaseUser]);
 
   // This screen never unmounts across sign-out, account deletion, or
   // signing into a different account — it's the same persistent tab
@@ -87,56 +77,7 @@ export default function ProfileScreen() {
     setFeedbackSubmitting(false);
     setFeedbackSubmitted(false);
     setFeedbackError('');
-    setNotifToggleError('');
-    setSavingNotifToggle(false);
   }, [firebaseUser]);
-
-  // Once the OS permission is actually granted, the switch controls a
-  // pure in-app preference (notificationsEnabled) — there's no API to
-  // revoke OS notification permission from inside an app, so this field is
-  // what actually determines whether Manage's sends include this device
-  // (see the recipient filters in moderator.tsx and functions/src). Before
-  // permission is granted, there's nothing to toggle off yet, so it falls
-  // through to requesting it instead.
-  const handleNotifToggle = async (nextValue: boolean) => {
-    // Guards against rapid double-taps racing each other — each call is a
-    // separate async updateDoc with no ordering guarantee, so two in
-    // flight at once could resolve out of order and leave Firestore
-    // reflecting the *first* tap instead of the most recent one. Disabling
-    // the switch for the duration of one write closes that window.
-    if (notifStatus === 'checking' || savingNotifToggle) return;
-    setNotifToggleError('');
-    setSavingNotifToggle(true);
-    try {
-      if (notifStatus === 'granted') {
-        if (!profile) return;
-        await updateDoc(doc(db, 'users', profile.uid), { notificationsEnabled: nextValue });
-        return;
-      }
-      if (!nextValue) return;
-      if (notifStatus === 'denied') {
-        // openSettings() opens the OS Settings app — there's no equivalent
-        // on web, where notification permission lives in the browser's own
-        // site-settings UI instead, so there's nothing useful to jump to.
-        if (Platform.OS !== 'web') Linking.openSettings();
-        return;
-      }
-      if (!profile) return;
-      await registerForPushNotificationsAsync(profile.uid);
-      const { status } = await Notifications.getPermissionsAsync();
-      setNotifStatus(status);
-    } catch (err) {
-      // This whole function used to have no error handling at all — a
-      // failed updateDoc (or anything else in here) was an unhandled
-      // promise rejection, which outside dev mode can fail completely
-      // silently with nothing shown, making "the toggle doesn't work"
-      // impossible to diagnose from the UI alone.
-      console.warn('Notification toggle failed:', err);
-      setNotifToggleError('Something went wrong — try again.');
-    } finally {
-      setSavingNotifToggle(false);
-    }
-  };
 
   if (loading) return null;
 
@@ -408,20 +349,6 @@ export default function ProfileScreen() {
             <Text style={styles.settingsLabel}>Change password</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
-
-          <View style={[styles.settingsRow, { flexWrap: 'wrap' }]}>
-            <View style={styles.settingsIcon}>
-              <Ionicons name="notifications-outline" size={16} color={colors.red} />
-            </View>
-            <Text style={styles.settingsLabel}>Notifications</Text>
-            <Switch
-              value={notifStatus === 'granted' && profile?.notificationsEnabled !== false}
-              onValueChange={handleNotifToggle}
-              disabled={notifStatus === 'checking' || savingNotifToggle}
-              trackColor={{ true: '#34C759', false: colors.borderStrong }}
-            />
-            {notifToggleError ? <Text style={[styles.error, { width: '100%', marginTop: spacing.xs }]}>{notifToggleError}</Text> : null}
-          </View>
 
           <Pressable style={styles.settingsRow} onPress={() => setShowCsaInfo(true)}>
             <View style={styles.settingsIcon}>

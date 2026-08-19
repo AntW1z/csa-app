@@ -26,7 +26,6 @@ interface UserDoc {
   uid: string;
   role: string;
   pushToken?: string;
-  notificationsEnabled?: boolean;
 }
 
 async function notifyForPost(
@@ -36,8 +35,11 @@ async function notifyForPost(
   title: string,
   body: string
 ) {
+  // No in-app opt-out for the time being (removed along with the
+  // Notifications toggle — see profile.tsx) — anyone with a registered
+  // token gets notified, full stop.
   const tokens = users
-    .filter((u) => u.pushToken && u.notificationsEnabled !== false && (post.visibility === 'everyone' || u.role !== 'user'))
+    .filter((u) => u.pushToken && (post.visibility === 'everyone' || u.role !== 'user'))
     .map((u) => u.pushToken as string);
   const reached = await sendExpoPush(tokens, title, body);
   console.log(`"${title}" reached ${reached} device(s).`);

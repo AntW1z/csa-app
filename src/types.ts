@@ -32,15 +32,14 @@ export interface UserProfile {
   createdAt: any;
   // Expo push token for this device, saved on sign-in — moderators' clients
   // read these directly to send push notifications on publish (see
-  // src/notifications.ts), no backend involved.
+  // src/notifications.ts), no backend involved. Having a token is
+  // currently the *only* gate on receiving a push — there's no in-app
+  // opt-out toggle right now (removed after a race condition in it made
+  // rapid toggling leave Firestore in an inconsistent state; revisit
+  // post-launch). Only real way to stop receiving is to revoke
+  // notification permission in OS Settings, which naturally stops new
+  // tokens from being obtained.
   pushToken?: string;
-  // In-app opt-out, separate from the OS permission — there's no API to
-  // revoke OS notification permission from inside an app, so this is what
-  // actually lets someone turn sends off after already granting it.
-  // undefined defaults to true (enabled) so existing accounts aren't
-  // silently opted out by a missing field — always check `!== false`,
-  // never truthiness, when reading this.
-  notificationsEnabled?: boolean;
   // IDs of PushMessage docs this user has opened in their in-app inbox —
   // small enough not to worry about unbounded growth at club scale, and
   // storing it here (rather than on the notification doc) means marking

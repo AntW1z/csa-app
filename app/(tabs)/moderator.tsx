@@ -535,7 +535,10 @@ export default function ModeratorScreen() {
       const snap = await getDocs(collection(db, 'users'));
       const recipients = snap.docs
         .map((d) => d.data() as UserProfile)
-        .filter((u) => u.pushToken && u.notificationsEnabled !== false && (notif.audience === 'everyone' || u.role !== 'user'))
+        // No in-app opt-out for the time being (removed along with the
+        // Notifications toggle — see profile.tsx) — anyone with a
+        // registered token gets notified, full stop.
+        .filter((u) => u.pushToken && (notif.audience === 'everyone' || u.role !== 'user'))
         .map((u) => ({ uid: u.uid, token: u.pushToken as string }));
       const { attempted, errors } = await sendPushToTokens(recipients, notif.title, notif.body);
       await updateDoc(doc(db, 'notifications', notif.id), { status: 'sent', sentAt: serverTimestamp() });

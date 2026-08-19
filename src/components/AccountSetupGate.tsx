@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Linking, Platform, Switch, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Notifications from 'expo-notifications';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
-import { registerForPushNotificationsAsync } from '../notifications';
 import { StudentYear } from '../types';
 import { colors, radius, spacing, shadow } from '../theme';
 import { YEAR_OPTIONS } from '../constants';
@@ -16,22 +14,17 @@ import { YEAR_OPTIONS } from '../constants';
 // Driven by that persisted Firestore field rather than local component
 // state specifically so it survives a force-quit: local state reset on
 // every launch, which meant closing the app mid-setup silently skipped it
-// for good. Name and notifications are offered here too since it's the
-// one guaranteed moment every new member sees, but year is the only field
-// that's actually required to finish.
+// for good. Name is offered here too since it's the one guaranteed moment
+// every new member sees, but year is the only field actually required to
+// finish. (Notifications used to have a toggle here too — removed along
+// with the one on the main Profile screen, see that file for why;
+// AuthContext still auto-registers for push on sign-in regardless.)
 export default function AccountSetupGate() {
   const { profile } = useAuth();
-  const [notifStatus, setNotifStatus] = useState<Notifications.PermissionStatus | 'checking'>('checking');
-  const [notifToggleError, setNotifToggleError] = useState('');
-  const [savingNotifToggle, setSavingNotifToggle] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [year, setYear] = useState<StudentYear | null>(null);
   const [saving, setSaving] = useState(false);
   const nameInitialized = useRef(false);
-
-  useEffect(() => {
-    Notifications.getPermissionsAsync().then(({ status }) => setNotifStatus(status));
-  }, []);
 
   // Seeds the name field from the auto-generated default
   // (email.split('@')[0], set by AuthContext at profile creation) exactly
@@ -43,40 +36,6 @@ export default function AccountSetupGate() {
       nameInitialized.current = true;
     }
   }, [profile]);
-
-  // Once the OS permission is actually granted, the switch controls a
-  // pure in-app preference (notificationsEnabled) — there's no API to
-  // revoke OS notification permission from inside an app, so this field is
-  // what actually determines whether Manage's sends include this device.
-  // Before permission is granted, there's nothing to toggle off yet, so it
-  // falls through to requesting it instead. Same logic as the main
-  // Notifications row in profile.tsx.
-  const handleNotifToggle = async (nextValue: boolean) => {
-    // Guards against rapid double-taps racing each other — see the same
-    // guard in profile.tsx's handleNotifToggle for why.
-    if (notifStatus === 'checking' || !profile || savingNotifToggle) return;
-    setNotifToggleError('');
-    setSavingNotifToggle(true);
-    try {
-      if (notifStatus === 'granted') {
-        await updateDoc(doc(db, 'users', profile.uid), { notificationsEnabled: nextValue });
-        return;
-      }
-      if (!nextValue) return;
-      if (notifStatus === 'denied') {
-        if (Platform.OS !== 'web') Linking.openSettings();
-        return;
-      }
-      await registerForPushNotificationsAsync(profile.uid);
-      const { status } = await Notifications.getPermissionsAsync();
-      setNotifStatus(status);
-    } catch (err) {
-      console.warn('Notification toggle failed:', err);
-      setNotifToggleError('Something went wrong — try again.');
-    } finally {
-      setSavingNotifToggle(false);
-    }
-  };
 
   if (!profile) return null;
 
@@ -121,20 +80,6 @@ export default function AccountSetupGate() {
           ))}
         </View>
 
-        <View style={[styles.notifRow, { flexWrap: 'wrap' }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Notifications</Text>
-            <Text style={styles.hint}>Get notified the moment events and announcements are posted.</Text>
-          </View>
-          <Switch
-            value={notifStatus === 'granted' && profile.notificationsEnabled !== false}
-            onValueChange={handleNotifToggle}
-            disabled={notifStatus === 'checking' || savingNotifToggle}
-            trackColor={{ true: '#34C759', false: colors.borderStrong }}
-          />
-          {notifToggleError ? <Text style={{ width: '100%', marginTop: spacing.xs, color: colors.red, fontSize: 12 }}>{notifToggleError}</Text> : null}
-        </View>
-
         <Pressable
           style={[styles.button, { marginTop: spacing.lg }, (!canFinish || saving) && styles.buttonDisabled]}
           onPress={finishSetup}
@@ -168,15 +113,6 @@ const styles = StyleSheet.create({
   yearOptionActive: { backgroundColor: colors.red, borderColor: colors.red, ...shadow.card },
   yearOptionText: { color: colors.textSecondary, fontSize: 18, fontWeight: '800' },
   yearOptionTextActive: { color: colors.onAccent },
-  notifRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    paddingTop: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
   button: { backgroundColor: colors.red, borderRadius: radius.md, padding: 14, alignItems: 'center' },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: colors.onAccent, fontWeight: '700' },
