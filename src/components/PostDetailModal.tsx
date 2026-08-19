@@ -147,7 +147,11 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
         <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={20} color={colors.textPrimary} />
         </Pressable>
-        <ScrollView>
+        {/* flexShrink lets this properly bound itself within detailCard's
+            maxHeight instead of potentially mismeasuring its scrollable
+            area — matters more here than it used to now that the check-in
+            section makes the content's height change dynamically. */}
+        <ScrollView style={styles.scrollView}>
           {post.imageUrl ? (
             // Full image, not cropped — sized to its real aspect ratio
             // once known so there's no cover-crop or awkward letterboxing.
@@ -287,6 +291,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   detailCard: { backgroundColor: colors.surface, borderRadius: radius.lg, overflow: 'hidden', maxHeight: '85%', ...shadow.card },
+  scrollView: { flexShrink: 1 },
   closeBtn: {
     position: 'absolute',
     top: spacing.sm,
