@@ -30,10 +30,10 @@ export type TimeRange = { start: Date | null; end: Date | null; allDay: boolean 
 // minutes since anything longer overlaps with just... checking the app.
 const REMIND_BEFORE_PRESETS = [5, 10, 15, 30, 45, 60];
 
-// 7am-11:30pm in 30-minute steps — a scrollable row of fixed slots instead
+// 7am-11:30pm in 15-minute steps — a scrollable row of fixed slots instead
 // of free text, so times stay consistent, sortable, and comparable.
-const TIME_SLOTS = Array.from({ length: 34 }, (_, i) => {
-  const totalMinutes = 7 * 60 + i * 30;
+const TIME_SLOTS = Array.from({ length: 67 }, (_, i) => {
+  const totalMinutes = 7 * 60 + i * 15;
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return { value: `${pad(h)}:${pad(m)}`, label: new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) };
