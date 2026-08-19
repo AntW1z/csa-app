@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
-import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import PromoCarousel from '../../src/components/PromoCarousel';
@@ -16,7 +17,6 @@ import { sortByOrder } from '../../src/utils';
 // and a separate ad popup were redundant with it rather than additive.
 export default function Home() {
   const router = useRouter();
-  const navigation = useNavigation();
   const [postsById, setPostsById] = useState<Record<string, Post>>({});
   const [carousel, setCarousel] = useState<CarouselItem[]>([]);
   const [carouselLoading, setCarouselLoading] = useState(true);
@@ -56,18 +56,6 @@ export default function Home() {
     }, [])
   );
 
-  // Home's header floats transparently above this screen's own content
-  // (see _layout.tsx), so its buttons stay visually on top of — and
-  // tappable through — the full-screen popup below otherwise. Swapping in
-  // the disabled variant while it's open dims them and blocks taps, same
-  // as the rest of the page is already visually receded behind the popup.
-  useEffect(() => {
-    navigation.setOptions({
-      headerLeft: () => <FloatingProfileButton disabled={showDetail} />,
-      headerRight: () => <FloatingNotificationsButton disabled={showDetail} />,
-    });
-  }, [navigation, showDetail]);
-
   // A carousel item linked to a post opens its detail using data already
   // sitting in postsById (the listener above is already running for
   // resolvedCarousel's own use, right below) — no need for a one-off
@@ -103,6 +91,17 @@ export default function Home() {
         <Text style={styles.ctaBtnText}>Check out Events</Text>
       </Pressable>
 
+      {/* Rendered as normal screen content, not a navigator header (see
+          _layout.tsx) — and specifically *before* the modal below, so its
+          full-screen popup naturally stacks on top of these and covers
+          them the same way it covers the carousel and CTA button, with no
+          manual disabling needed. box-none lets touches on the empty space
+          between the two buttons fall through to the carousel underneath. */}
+      <SafeAreaView edges={['top']} style={styles.floatingHeaderRow} pointerEvents="box-none">
+        <FloatingProfileButton />
+        <FloatingNotificationsButton />
+      </SafeAreaView>
+
       {detailPost && (
         <PostDetailModal post={detailPost} visible={showDetail} onClose={() => setShowDetail(false)} />
       )}
@@ -113,6 +112,15 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  floatingHeaderRow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   ctaBtn: {
     position: 'absolute',
     left: spacing.lg,
