@@ -11,11 +11,20 @@ export async function pickImage(): Promise<string | null> {
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (status !== 'granted') return null;
 
+  // allowsEditing is deliberately off — on iOS specifically, expo-image-picker's
+  // native crop tool only ever offers a square crop regardless of the
+  // `aspect` passed to it (a known platform limitation, not something
+  // configurable away), which silently cropped non-square flyers/photos.
+  // Android and web don't have this issue, which is why it only ever
+  // showed up on iPhone. The app already avoids cropping images elsewhere
+  // (the carousel's blurred-backdrop design, full-image display in post
+  // details), so skipping the crop step entirely — same as web already
+  // did — is more consistent than fighting iOS's picker for a non-square
+  // ratio it doesn't actually support.
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
     quality: 1,
-    allowsEditing: true,
-    aspect: [4, 3],
+    allowsEditing: false,
   });
   if (result.canceled) return null;
   return result.assets[0]?.uri ?? null;
