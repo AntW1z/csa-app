@@ -478,24 +478,27 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
 
-          <Pressable style={styles.settingsRow} onPress={() => setShowFeedback(true)}>
+          <Pressable style={[styles.settingsRow, styles.settingsRowLast]} onPress={() => setShowFeedback(true)}>
             <View style={styles.settingsIcon}>
               <Ionicons name="chatbox-ellipses-outline" size={16} color={colors.red} />
             </View>
             <Text style={styles.settingsLabel}>Feedback</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
-
-          <Pressable style={[styles.settingsRow, styles.settingsRowLast]} onPress={() => openExternalLink(PRIVACY_POLICY_URL)}>
-            <View style={styles.settingsIcon}>
-              <Ionicons name="document-text-outline" size={16} color={colors.red} />
-            </View>
-            <Text style={styles.settingsLabel}>Privacy Policy</Text>
-            <Ionicons name="open-outline" size={16} color={colors.textMuted} />
-          </Pressable>
         </View>
 
-        <Text style={styles.versionText}>Version {Constants.expoConfig?.version ?? '—'}</Text>
+        <View style={styles.footerWrap}>
+          <Text style={styles.versionText}>Version {Constants.expoConfig?.version ?? '—'}</Text>
+          <View style={styles.footerLinksRow}>
+            <Text style={styles.footerLink} onPress={() => openExternalLink(PRIVACY_POLICY_URL)}>
+              Privacy Policy
+            </Text>
+            <Text style={styles.footerLinkDivider}>·</Text>
+            <Text style={styles.footerLink} onPress={() => openExternalLink(TERMS_OF_SERVICE_URL)}>
+              Terms of Service
+            </Text>
+          </View>
+        </View>
 
         <View style={styles.signOutWrap}>
           <Pressable style={styles.signOutBtn} onPress={() => signOut(auth)}>
@@ -776,7 +779,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   settingsLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary },
+  footerWrap: { alignItems: 'center', gap: spacing.xs },
   versionText: { textAlign: 'center', fontSize: 12, color: colors.textMuted },
+  footerLinksRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  footerLink: { fontSize: 12, color: colors.red, fontWeight: '600' },
+  footerLinkDivider: { fontSize: 12, color: colors.textMuted },
   feedbackInput: { minHeight: 80, textAlignVertical: 'top' },
   input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, padding: spacing.md, fontSize: 15, color: colors.textPrimary },
   button: { backgroundColor: colors.red, borderRadius: radius.md, padding: 14, alignItems: 'center' },
