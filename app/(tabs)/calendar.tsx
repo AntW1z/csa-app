@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, FlatList, useWindowDimensions, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import { useAuth } from '../../src/context/AuthContext';
@@ -63,6 +64,16 @@ export default function EventsScreen() {
     setShowDetail(true);
   };
   const detailPost = detailPostId ? posts.find((p) => p.id === detailPostId) ?? null : null;
+
+  // Tab screens stay mounted when you switch away (Expo Router doesn't
+  // unmount them), so an open popup would otherwise still be sitting there
+  // when you come back to this tab later — closing it on blur means
+  // leaving the tab always resets to a clean state.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setShowDetail(false);
+    }, [])
+  );
 
   useEffect(() => {
     // No orderBy here deliberately — combining it with the where() below

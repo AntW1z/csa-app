@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../src/firebase';
 import PromoCarousel from '../../src/components/PromoCarousel';
 import PostDetailModal from '../../src/components/PostDetailModal';
+import { FloatingProfileButton, FloatingNotificationsButton } from './_layout';
 import { Post, CarouselItem } from '../../src/types';
 import { colors, radius, spacing, shadow } from '../../src/theme';
 import { sortByOrder } from '../../src/utils';
@@ -15,6 +16,7 @@ import { sortByOrder } from '../../src/utils';
 // and a separate ad popup were redundant with it rather than additive.
 export default function Home() {
   const router = useRouter();
+  const navigation = useNavigation();
   const [postsById, setPostsById] = useState<Record<string, Post>>({});
   const [carousel, setCarousel] = useState<CarouselItem[]>([]);
   const [carouselLoading, setCarouselLoading] = useState(true);
@@ -43,6 +45,28 @@ export default function Home() {
       setCarouselLoading(false);
     });
   }, []);
+
+  // Tab screens stay mounted when you switch away (Expo Router doesn't
+  // unmount them), so an open popup would otherwise still be sitting there
+  // when you come back to this tab later — closing it on blur means
+  // leaving the tab always resets to a clean state.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setShowDetail(false);
+    }, [])
+  );
+
+  // Home's header floats transparently above this screen's own content
+  // (see _layout.tsx), so its buttons stay visually on top of — and
+  // tappable through — the full-screen popup below otherwise. Swapping in
+  // the disabled variant while it's open dims them and blocks taps, same
+  // as the rest of the page is already visually receded behind the popup.
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => <FloatingProfileButton disabled={showDetail} />,
+      headerRight: () => <FloatingNotificationsButton disabled={showDetail} />,
+    });
+  }, [navigation, showDetail]);
 
   // A carousel item linked to a post opens its detail using data already
   // sitting in postsById (the listener above is already running for

@@ -137,13 +137,21 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
   // transparent presentation intercepts touch handling in ways that broke
   // ScrollView's drag-to-scroll here (long descriptions got stuck
   // un-scrollable), the same class of issue documented on the date picker
-  // fields elsewhere in this app. This overlay pattern (used by the
-  // Sponsors detail popup and every panel in Manage) scrolls correctly.
+  // fields elsewhere in this app.
+  //
+  // Both wrapping layers are plain Views, not Pressables — nesting a
+  // ScrollView inside a Pressable (which the backdrop-tap-to-close +
+  // stopPropagation version of this used to do) is a known iOS-specific
+  // touch-responder conflict: the Pressable's own gesture responder can
+  // claim the touch before the ScrollView gets a chance to recognize it as
+  // a drag, breaking scroll entirely on-device even though it looks fine
+  // on web (which doesn't use the same native responder negotiation).
+  // Sponsors' detail popup uses this same plain-View pattern and has never
+  // had the problem — matching it here means dropping tap-outside-to-close
+  // for this modal specifically; the X button is now the only way to close it.
   return (
-    // Tapping the dimmed backdrop closes the popup; the inner Pressable
-    // stops that tap from bubbling up when it lands on the card itself.
-    <Pressable style={styles.overlay} onPress={onClose}>
-      <Pressable style={styles.detailCard} onPress={(e) => e.stopPropagation()}>
+    <View style={styles.overlay}>
+      <View style={styles.detailCard}>
         <Pressable style={styles.closeBtn} onPress={onClose} hitSlop={8}>
           <Ionicons name="close" size={20} color={colors.textPrimary} />
         </Pressable>
@@ -274,8 +282,8 @@ export default function PostDetailModal({ post, visible, onClose }: { post: Post
             )}
           </View>
         </ScrollView>
-      </Pressable>
-    </Pressable>
+      </View>
+    </View>
   );
 }
 

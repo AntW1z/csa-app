@@ -33,21 +33,38 @@ function NotificationsHeaderButton() {
 // of sitting on its own opaque bar (see the "index" Tabs.Screen below) — a
 // white circular backdrop keeps these icons legible no matter what's
 // behind them in the image, the same way the reference design does it.
-function FloatingProfileButton() {
+//
+// Because a transparent header renders in its own layer *above* the
+// screen's own content, these buttons stay visually on top of (and
+// clickable through) anything the screen renders itself — including
+// index.tsx's full-screen post detail overlay. `disabled` lets that screen
+// dim and disable these via navigation.setOptions() while its own popup is
+// open, so they can't be mis-tapped underneath it.
+export function FloatingProfileButton({ disabled }: { disabled?: boolean }) {
   const router = useRouter();
   return (
-    <Pressable onPress={() => router.push('/profile')} hitSlop={8} style={[styles.profileBtn, styles.floatingIconBg]}>
+    <Pressable
+      onPress={() => router.push('/profile')}
+      hitSlop={8}
+      disabled={disabled}
+      style={[styles.profileBtn, styles.floatingIconBg, disabled && styles.floatingIconDisabled]}
+    >
       <Ionicons name="person-circle-outline" size={28} color={colors.textPrimary} />
     </Pressable>
   );
 }
 
-function FloatingNotificationsButton() {
+export function FloatingNotificationsButton({ disabled }: { disabled?: boolean }) {
   const router = useRouter();
   const { firebaseUser, unreadCount } = useAuth();
   if (!firebaseUser) return null;
   return (
-    <Pressable onPress={() => router.push('/notifications')} hitSlop={8} style={[styles.notifBtn, styles.floatingIconBg]}>
+    <Pressable
+      onPress={() => router.push('/notifications')}
+      hitSlop={8}
+      disabled={disabled}
+      style={[styles.notifBtn, styles.floatingIconBg, disabled && styles.floatingIconDisabled]}
+    >
       <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
       {unreadCount > 0 && (
         <View style={styles.notifBadge}>
@@ -145,6 +162,7 @@ const styles = StyleSheet.create({
   profileBtn: { marginLeft: spacing.lg },
   notifBtn: { marginRight: spacing.lg },
   floatingIconBg: { backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: radius.pill, padding: 4 },
+  floatingIconDisabled: { opacity: 0.35 },
   notifBadge: {
     position: 'absolute',
     top: -4,
