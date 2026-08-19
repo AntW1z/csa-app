@@ -40,6 +40,8 @@ export default function ProfileScreen() {
   const [deleting, setDeleting] = useState(false);
 
   const [notifStatus, setNotifStatus] = useState<Notifications.PermissionStatus | 'checking'>('checking');
+  const [notifToggleError, setNotifToggleError] = useState('');
+  const [savingNotifToggle, setSavingNotifToggle] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -85,6 +87,8 @@ export default function ProfileScreen() {
     setFeedbackSubmitting(false);
     setFeedbackSubmitted(false);
     setFeedbackError('');
+    setNotifToggleError('');
+    setSavingNotifToggle(false);
   }, [firebaseUser]);
 
   // Once the OS permission is actually granted, the switch controls a
@@ -95,24 +99,43 @@ export default function ProfileScreen() {
   // permission is granted, there's nothing to toggle off yet, so it falls
   // through to requesting it instead.
   const handleNotifToggle = async (nextValue: boolean) => {
-    if (notifStatus === 'checking') return;
-    if (notifStatus === 'granted') {
+    // Guards against rapid double-taps racing each other — each call is a
+    // separate async updateDoc with no ordering guarantee, so two in
+    // flight at once could resolve out of order and leave Firestore
+    // reflecting the *first* tap instead of the most recent one. Disabling
+    // the switch for the duration of one write closes that window.
+    if (notifStatus === 'checking' || savingNotifToggle) return;
+    setNotifToggleError('');
+    setSavingNotifToggle(true);
+    try {
+      if (notifStatus === 'granted') {
+        if (!profile) return;
+        await updateDoc(doc(db, 'users', profile.uid), { notificationsEnabled: nextValue });
+        return;
+      }
+      if (!nextValue) return;
+      if (notifStatus === 'denied') {
+        // openSettings() opens the OS Settings app — there's no equivalent
+        // on web, where notification permission lives in the browser's own
+        // site-settings UI instead, so there's nothing useful to jump to.
+        if (Platform.OS !== 'web') Linking.openSettings();
+        return;
+      }
       if (!profile) return;
-      await updateDoc(doc(db, 'users', profile.uid), { notificationsEnabled: nextValue });
-      return;
+      await registerForPushNotificationsAsync(profile.uid);
+      const { status } = await Notifications.getPermissionsAsync();
+      setNotifStatus(status);
+    } catch (err) {
+      // This whole function used to have no error handling at all — a
+      // failed updateDoc (or anything else in here) was an unhandled
+      // promise rejection, which outside dev mode can fail completely
+      // silently with nothing shown, making "the toggle doesn't work"
+      // impossible to diagnose from the UI alone.
+      console.warn('Notification toggle failed:', err);
+      setNotifToggleError('Something went wrong — try again.');
+    } finally {
+      setSavingNotifToggle(false);
     }
-    if (!nextValue) return;
-    if (notifStatus === 'denied') {
-      // openSettings() opens the OS Settings app — there's no equivalent
-      // on web, where notification permission lives in the browser's own
-      // site-settings UI instead, so there's nothing useful to jump to.
-      if (Platform.OS !== 'web') Linking.openSettings();
-      return;
-    }
-    if (!profile) return;
-    await registerForPushNotificationsAsync(profile.uid);
-    const { status } = await Notifications.getPermissionsAsync();
-    setNotifStatus(status);
   };
 
   if (loading) return null;
@@ -386,7 +409,7 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
 
-          <View style={styles.settingsRow}>
+          <View style={[styles.settingsRow, { flexWrap: 'wrap' }]}>
             <View style={styles.settingsIcon}>
               <Ionicons name="notifications-outline" size={16} color={colors.red} />
             </View>
@@ -394,9 +417,10 @@ export default function ProfileScreen() {
             <Switch
               value={notifStatus === 'granted' && profile?.notificationsEnabled !== false}
               onValueChange={handleNotifToggle}
-              disabled={notifStatus === 'checking'}
+              disabled={notifStatus === 'checking' || savingNotifToggle}
               trackColor={{ true: '#34C759', false: colors.borderStrong }}
             />
+            {notifToggleError ? <Text style={[styles.error, { width: '100%', marginTop: spacing.xs }]}>{notifToggleError}</Text> : null}
           </View>
 
           <Pressable style={styles.settingsRow} onPress={() => setShowCsaInfo(true)}>

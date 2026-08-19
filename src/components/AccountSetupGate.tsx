@@ -22,6 +22,8 @@ import { YEAR_OPTIONS } from '../constants';
 export default function AccountSetupGate() {
   const { profile } = useAuth();
   const [notifStatus, setNotifStatus] = useState<Notifications.PermissionStatus | 'checking'>('checking');
+  const [notifToggleError, setNotifToggleError] = useState('');
+  const [savingNotifToggle, setSavingNotifToggle] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [year, setYear] = useState<StudentYear | null>(null);
   const [saving, setSaving] = useState(false);
@@ -50,19 +52,30 @@ export default function AccountSetupGate() {
   // falls through to requesting it instead. Same logic as the main
   // Notifications row in profile.tsx.
   const handleNotifToggle = async (nextValue: boolean) => {
-    if (notifStatus === 'checking' || !profile) return;
-    if (notifStatus === 'granted') {
-      await updateDoc(doc(db, 'users', profile.uid), { notificationsEnabled: nextValue });
-      return;
+    // Guards against rapid double-taps racing each other — see the same
+    // guard in profile.tsx's handleNotifToggle for why.
+    if (notifStatus === 'checking' || !profile || savingNotifToggle) return;
+    setNotifToggleError('');
+    setSavingNotifToggle(true);
+    try {
+      if (notifStatus === 'granted') {
+        await updateDoc(doc(db, 'users', profile.uid), { notificationsEnabled: nextValue });
+        return;
+      }
+      if (!nextValue) return;
+      if (notifStatus === 'denied') {
+        if (Platform.OS !== 'web') Linking.openSettings();
+        return;
+      }
+      await registerForPushNotificationsAsync(profile.uid);
+      const { status } = await Notifications.getPermissionsAsync();
+      setNotifStatus(status);
+    } catch (err) {
+      console.warn('Notification toggle failed:', err);
+      setNotifToggleError('Something went wrong — try again.');
+    } finally {
+      setSavingNotifToggle(false);
     }
-    if (!nextValue) return;
-    if (notifStatus === 'denied') {
-      if (Platform.OS !== 'web') Linking.openSettings();
-      return;
-    }
-    await registerForPushNotificationsAsync(profile.uid);
-    const { status } = await Notifications.getPermissionsAsync();
-    setNotifStatus(status);
   };
 
   if (!profile) return null;
@@ -108,7 +121,7 @@ export default function AccountSetupGate() {
           ))}
         </View>
 
-        <View style={styles.notifRow}>
+        <View style={[styles.notifRow, { flexWrap: 'wrap' }]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Notifications</Text>
             <Text style={styles.hint}>Get notified the moment events and announcements are posted.</Text>
@@ -116,9 +129,10 @@ export default function AccountSetupGate() {
           <Switch
             value={notifStatus === 'granted' && profile.notificationsEnabled !== false}
             onValueChange={handleNotifToggle}
-            disabled={notifStatus === 'checking'}
+            disabled={notifStatus === 'checking' || savingNotifToggle}
             trackColor={{ true: '#34C759', false: colors.borderStrong }}
           />
+          {notifToggleError ? <Text style={{ width: '100%', marginTop: spacing.xs, color: colors.red, fontSize: 12 }}>{notifToggleError}</Text> : null}
         </View>
 
         <Pressable
