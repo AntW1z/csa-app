@@ -69,6 +69,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role: 'user',
             memberRequestStatus: 'none',
             createdAt: serverTimestamp(),
+            // Only ever true on a doc created right here — see
+            // AccountSetupGate, which clears it once finished.
+            needsSetup: true,
           };
           await setDoc(ref, newProfile);
           setProfile(newProfile);

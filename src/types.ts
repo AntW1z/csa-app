@@ -16,10 +16,18 @@ export interface UserProfile {
   // requester) — dues are paid per semester or per year, so this is what
   // lets a semester-only reset skip full-year members.
   membershipTerm?: MembershipTerm;
-  // Asked as a mandatory step right after signup (see profile.tsx) — only
-  // ever missing on accounts created before this existed, in which case
-  // event check-in asks for it there instead as a fallback.
+  // Asked as a mandatory step right after signup (see AccountSetupGate) —
+  // only ever missing on accounts created before this existed, in which
+  // case event check-in asks for it there instead as a fallback.
   year?: StudentYear;
+  // True only on a brand-new profile doc (set at creation in AuthContext),
+  // cleared once AccountSetupGate is completed. Deliberately a persisted
+  // Firestore field, not local component state — local state resets on
+  // every app launch, which meant force-quitting mid-setup (or just
+  // switching tabs to dodge it) let someone skip it permanently. Checked
+  // at the root layout, above the tab navigator, so it blocks the whole
+  // app (including the tab bar) rather than just one screen.
+  needsSetup?: boolean;
   requestedAt?: any;
   createdAt: any;
   // Expo push token for this device, saved on sign-in — moderators' clients
