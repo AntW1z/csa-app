@@ -537,13 +537,13 @@ export default function ModeratorScreen() {
         .map((d) => d.data() as UserProfile)
         .filter((u) => u.pushToken && u.notificationsEnabled !== false && (notif.audience === 'everyone' || u.role !== 'user'))
         .map((u) => ({ uid: u.uid, token: u.pushToken as string }));
-      const { attempted, receiptErrors } = await sendPushToTokens(recipients, notif.title, notif.body);
+      const { attempted, errors } = await sendPushToTokens(recipients, notif.title, notif.body);
       await updateDoc(doc(db, 'notifications', notif.id), { status: 'sent', sentAt: serverTimestamp() });
 
       if (!attempted) {
         logAction(`Sent "${notif.title}" — reached 0 devices (no one has push notifications registered)`);
-      } else if (receiptErrors.length > 0) {
-        logAction(`Sent "${notif.title}" to ${attempted} device${attempted === 1 ? '' : 's'} — ${receiptErrors.length} failed: ${receiptErrors.join('; ')}`);
+      } else if (errors.length > 0) {
+        logAction(`Sent "${notif.title}" to ${attempted} device${attempted === 1 ? '' : 's'} — ${errors.length} failed: ${errors.join('; ')}`);
       } else {
         logAction(`Sent "${notif.title}" to ${notif.audience === 'everyone' ? 'everyone' : 'members'} — delivered to ${attempted} device${attempted === 1 ? '' : 's'}`);
       }

@@ -55,11 +55,14 @@ export async function registerForPushNotificationsAsync(uid: string) {
 
 export interface SendResult {
   attempted: number;
-  // A ticket coming back "ok" only means Expo *accepted* the request — the
-  // real delivery outcome (including APNs/FCM-level rejections) only shows
-  // up in a receipt, checked here a few seconds later. Human-readable
-  // messages, so the UI can show real failures instead of a plain count.
-  receiptErrors: string[];
+  // Human-readable failure messages from *either* stage: a ticket coming
+  // back "error" immediately (bad/dead token, invalid credentials, etc.)
+  // or a ticket that came back "ok" but whose receipt later reported a
+  // delivery failure (checked a few seconds after sending). Both used to
+  // be conflated as "attempted" with only receipt errors surfaced, which
+  // meant a token that failed at the ticket stage silently counted as
+  // delivered — that's the gap that made "delivered to N devices" lie.
+  errors: string[];
 }
 
 // Sent directly from the publishing moderator's device via Expo's push
@@ -78,12 +81,12 @@ export async function sendPushToTokens(recipients: PushRecipient[], title: strin
     if (r.token?.startsWith('ExponentPushToken')) tokenToUid.set(r.token, r.uid);
   }
   const tokens = Array.from(tokenToUid.keys());
-  if (tokens.length === 0) return { attempted: 0, receiptErrors: [] };
+  if (tokens.length === 0) return { attempted: 0, errors: [] };
 
   const chunks: string[][] = [];
   for (let i = 0; i < tokens.length; i += 100) chunks.push(tokens.slice(i, i + 100));
 
-  const receiptErrors: string[] = [];
+  const errors: string[] = [];
 
   await Promise.all(
     chunks.map(async (chunk) => {
@@ -99,9 +102,13 @@ export async function sendPushToTokens(recipients: PushRecipient[], title: strin
         // "sent" alone doesn't mean "delivered", so log the actual tickets.
         console.log('Expo push response:', JSON.stringify(json));
         const tickets: { status: string; id?: string; details?: { error?: string } }[] = json.data ?? [];
-        const errors = tickets.filter((t) => t.status === 'error');
-        if (errors.length > 0) console.warn('Push send had per-ticket errors:', JSON.stringify(errors));
+        const ticketErrors = tickets.filter((t) => t.status === 'error');
+        if (ticketErrors.length > 0) console.warn('Push send had per-ticket errors:', JSON.stringify(ticketErrors));
         if (json.errors) console.warn('Push send request-level errors:', JSON.stringify(json.errors));
+        // These come back immediately, in this same response — previously
+        // only logged to the console, never surfaced to the moderator, so
+        // a token that failed right here still counted toward "delivered."
+        for (const t of ticketErrors) errors.push(t.details?.error ?? 'Unknown send error');
 
         await Promise.all(
           tickets.map((ticket, i) => {
@@ -129,7 +136,7 @@ export async function sendPushToTokens(recipients: PushRecipient[], title: strin
         for (const id of Object.keys(receipts)) {
           const r = receipts[id];
           if (r.status === 'error') {
-            receiptErrors.push(r.details?.error ? `${r.details.error}: ${r.message ?? ''}`.trim() : (r.message ?? 'Unknown delivery error'));
+            errors.push(r.details?.error ? `${r.details.error}: ${r.message ?? ''}`.trim() : (r.message ?? 'Unknown delivery error'));
           }
         }
       } catch (err) {
@@ -138,5 +145,5 @@ export async function sendPushToTokens(recipients: PushRecipient[], title: strin
     })
   );
 
-  return { attempted: tokens.length, receiptErrors };
+  return { attempted: tokens.length, errors };
 }
